@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Operator data — masters are persisted here at runtime and must NOT be
+# committed (they contain real client TINs / item codes). Seed files that
+# ship with the repo live under data/seed/ and are tracked explicitly.
+/data/clients/*/
+/data/clients/*.json
+!/data/clients/.gitkeep
+
+# Uploaded raw files and generated outputs
+/uploads/
+/outputs/
+
+# OS
+.DS_Store

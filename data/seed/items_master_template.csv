@@ -1,0 +1,4 @@
+name,item_code,hsn_code,tax_category
+Rice 50kg,ITM_001,1006,STANDARD_VAT
+Bread,ITM_002,1905,EXEMPT
+Sugar 1kg,ITM_003,1701,STANDARD_VAT
