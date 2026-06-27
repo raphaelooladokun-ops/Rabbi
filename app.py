@@ -14,11 +14,10 @@ import pandas as pd
 import streamlit as st
 
 from core.bootstrap import ensure_default_clients
-from core.config import TRADER_INVOICE_NUMBER_MAX
 from core.engine import ProcessResult, process
 from core.masters import ClientConfig, ItemEntry, MasterStore, PartyEntry
 from core.models import FlagCode
-from core.output import write_csv_bytes
+from core.output import build_exception_rows, write_csv_bytes, write_exceptions_csv
 from core.readers import get_reader
 from core.store import get_master_store
 from ui.auth import login_gate, logout_button
@@ -36,26 +35,6 @@ def get_store():
 # ---------------------------------------------------------------------------
 # Convert page
 # ---------------------------------------------------------------------------
-def _apply_overrides(result: ProcessResult) -> ProcessResult:
-    """Apply operator-supplied manual invoice-number overrides for invoices
-    whose number overflowed and could not be auto-trimmed safely."""
-    overrides: dict = st.session_state.get("inv_number_overrides", {})
-    if not overrides:
-        return result
-    taken = {iv.trader_invoice_number for iv in result.invoices if iv.trader_invoice_number}
-    for iv in result.invoices:
-        ov = overrides.get(iv.invoice_number_raw)
-        if not ov:
-            continue
-        ov = ov.strip()
-        if len(ov) > TRADER_INVOICE_NUMBER_MAX or ov in taken:
-            continue  # invalid/duplicate override is ignored
-        iv.trader_invoice_number = ov
-        iv.flags = [f for f in iv.flags if f.code != FlagCode.INVOICE_NUMBER_OVERFLOW]
-        taken.add(ov)
-    return result
-
-
 def render_convert(store: MasterStore, client: ClientConfig) -> None:
     st.header(f"Convert — {client.name}")
     st.caption(client.notes)
@@ -81,7 +60,6 @@ def render_convert(store: MasterStore, client: ClientConfig) -> None:
         st.session_state["rows"] = read_result.rows
         st.session_state["file_errors"] = read_result.file_errors
         st.session_state["rows_key"] = cache_key
-        st.session_state["inv_number_overrides"] = {}
 
     for err in st.session_state.get("file_errors", []):
         st.error(err)
@@ -91,7 +69,7 @@ def render_convert(store: MasterStore, client: ClientConfig) -> None:
         st.warning("No item lines were found in this file.")
         return
 
-    result = _apply_overrides(process(rows, client, store))
+    result = process(rows, client, store)
 
     ready = result.ready_invoices
     blocking = result.blocking_invoices
@@ -101,137 +79,129 @@ def render_convert(store: MasterStore, client: ClientConfig) -> None:
     c3.metric("Need attention", len(blocking))
     c4.metric("Item lines", len(rows))
 
-    _render_exceptions(store, client, result)
-    st.divider()
-    _render_ready(ready)
-    st.divider()
     _render_download(result)
-
-
-def _render_exceptions(store: MasterStore, client: ClientConfig, result: ProcessResult) -> None:
-    st.subheader("Items needing attention")
-    flagged = result.flagged_invoices
-    if not flagged:
-        st.success("No exceptions. Every invoice is ready to export.")
-        return
-
-    tax_categories = list(store.tax_rates().keys())
-    for idx, iv in enumerate(flagged):
-        errors = [f for f in iv.all_flags if f.is_error]
-        warns = [f for f in iv.all_flags if not f.is_error]
-        icon = "🛑" if errors else "⚠️"
-        label = f"{icon} {iv.invoice_number_raw}"
-        if iv.branch:
-            label += f"  ·  {iv.branch}"
-        label += f"  ·  {iv.customer_name}"
-        with st.expander(label, expanded=bool(errors)):
-            # One invoice can flag the same unknown item/customer on several
-            # lines; show each distinct exception only once.
-            for j, flag in enumerate(_dedupe_flags(errors + warns)):
-                _render_flag(store, client, iv, flag, tax_categories, uid=f"{idx}_{j}")
-
-
-def _flag_signature(flag) -> tuple:
-    """Identity used to collapse repeated flags within one invoice."""
-    ctx = flag.context
-    return (flag.code, ctx.get("item_name", ""), ctx.get("customer_name", ""), flag.field or "")
-
-
-def _dedupe_flags(flags):
-    seen, out = set(), []
-    for f in flags:
-        sig = _flag_signature(f)
-        if sig in seen:
-            continue
-        seen.add(sig)
-        out.append(f)
-    return out
-
-
-def _render_flag(store, client, iv, flag, tax_categories, uid: str) -> None:
-    sev = "🛑 Error" if flag.is_error else "⚠️ Warning"
-    st.markdown(f"**{sev} — {flag.code.value}**: {flag.message}")
-
-    if flag.code == FlagCode.ITEM_NOT_FOUND:
-        name = flag.context.get("item_name", "")
-        with st.form(f"item_{uid}"):
-            st.write(f"Add **{name}** to the items master for {client.name}:")
-            code = st.text_input("item_code (ITM_xxx)", key=f"code_{uid}")
-            hsn = st.text_input("HSN code", value=flag.context.get("hsn", ""), key=f"hsn_{uid}")
-            cat = st.selectbox("Tax category", tax_categories, key=f"cat_{uid}")
-            if st.form_submit_button("Add item") and code:
-                store.upsert_item(client.id, ItemEntry(name=name, item_code=code, hsn_code=hsn, tax_category=cat))
-                st.rerun()
-
-    elif flag.code == FlagCode.CUSTOMER_NOT_FOUND:
-        name = flag.context.get("customer_name", "")
-        with st.form(f"party_{uid}"):
-            st.write(f"Add **{name}** to the parties master for {client.name}:")
-            status = st.selectbox("Status", ["B2B", "B2C"], key=f"st_{uid}")
-            tin = st.text_input("TIN (required for B2B)", key=f"tin_{uid}")
-            if st.form_submit_button("Add customer"):
-                store.upsert_party(client.id, PartyEntry(name=name, tin=tin, status=status))
-                st.rerun()
-
-    elif flag.code == FlagCode.INVOICE_NUMBER_OVERFLOW:
-        with st.form(f"ovr_{uid}"):
-            st.write(
-                f"Provide a unique replacement invoice number (≤ {TRADER_INVOICE_NUMBER_MAX} chars). "
-                f"Auto-trim was unsafe: {flag.context.get('attempted', '')}"
-            )
-            new = st.text_input("trader_invoice_number", value=iv.invoice_number_raw[:TRADER_INVOICE_NUMBER_MAX],
-                                key=f"ovrnum_{uid}")
-            if st.form_submit_button("Use this number"):
-                st.session_state.setdefault("inv_number_overrides", {})[iv.invoice_number_raw] = new
-                st.rerun()
-
-    else:
-        # Mismatch / TIN format / broken value / length: informational. The
-        # operator fixes the source file or the master, then re-uploads.
-        st.caption("Resolve at source (fix the file or the relevant master), then re-upload.")
-
-
-def _render_ready(ready) -> None:
-    st.subheader(f"Ready invoices ({len(ready)})")
-    if not ready:
-        st.caption("None yet.")
-        return
-    table = [
-        {
-            "Invoice #": iv.trader_invoice_number,
-            "Branch": iv.branch or "",
-            "Date": str(iv.invoice_date or ""),
-            "Customer": iv.customer_name,
-            "Kind": iv.invoice_kind,
-            "TIN": iv.party_tin or "",
-            "Lines": len(iv.lines),
-            "Ex-VAT total": float(iv.ex_vat_total),
-        }
-        for iv in ready
-    ]
-    st.dataframe(pd.DataFrame(table), use_container_width=True, hide_index=True)
+    st.divider()
+    _render_exceptions(store, client, result)
 
 
 def _render_download(result: ProcessResult) -> None:
-    st.subheader("Download Digitax CSV")
-    blocking = result.blocking_invoices
-    if blocking:
-        st.warning(
-            f"{len(blocking)} invoice(s) still have blocking errors and will be excluded. "
-            "Resolve them above, or download only the ready invoices."
-        )
+    st.subheader("1. Download the Digitax CSV")
     ready = result.ready_invoices
-    if not ready:
-        st.info("No ready invoices to export yet.")
+    blocking = result.blocking_invoices
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Ready invoices only** — safe to upload to Digitax as-is.")
+        if ready:
+            st.download_button(
+                f"⬇️ Download ready CSV ({len(ready)} invoices)",
+                data=write_csv_bytes(result.invoices, only_ready=True),
+                file_name="digitax_upload_ready.csv",
+                mime="text/csv",
+                type="primary",
+                use_container_width=True,
+            )
+        else:
+            st.caption("No fully-ready invoices yet.")
+    with col2:
+        st.markdown("**All invoices** — includes flagged ones for you to fix in Excel.")
+        st.download_button(
+            f"⬇️ Download ALL CSV ({len(result.invoices)} invoices)",
+            data=write_csv_bytes(result.invoices, only_ready=False),
+            file_name="digitax_upload_all.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    if blocking:
+        st.caption(
+            f"ℹ️ {len(blocking)} invoice(s) are flagged. In the ALL file, any line whose item "
+            "isn't recognised has a blank **item_code** for you to fill in — see the list below."
+        )
+
+
+def _render_exceptions(store: MasterStore, client: ClientConfig, result: ProcessResult) -> None:
+    st.subheader("2. Lines needing attention")
+    report = build_exception_rows(result)
+    if not report:
+        st.success("Nothing flagged — every invoice is ready.")
         return
-    csv_bytes = write_csv_bytes(result.invoices, only_ready=True)
-    st.download_button(
-        f"Download CSV ({len(ready)} invoices)",
-        data=csv_bytes,
-        file_name="digitax_upload.csv",
-        mime="text/csv",
-        type="primary",
+
+    st.caption(
+        "Fix these directly in the downloaded **ALL** file (the *source_rows* column points to the "
+        "row in your original sheet), or add them to the memory below so future runs recognise them."
     )
+    df = pd.DataFrame(report)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.download_button(
+        "⬇️ Download this list (CSV)",
+        data=write_exceptions_csv(result).encode("utf-8"),
+        file_name="exceptions_report.csv",
+        mime="text/csv",
+    )
+
+    _render_bulk_resolve(store, client, result)
+
+
+def _render_bulk_resolve(store: MasterStore, client: ClientConfig, result: ProcessResult) -> None:
+    """Optional one-shot way to teach the app every unknown item/customer in
+    this run at once (instead of one-by-one), so future runs recognise them."""
+    unknown_items = sorted({
+        f.context.get("item_name", "")
+        for iv in result.invoices for f in iv.all_flags
+        if f.code == FlagCode.ITEM_NOT_FOUND and f.context.get("item_name")
+    })
+    unknown_custs = sorted({
+        f.context.get("customer_name", "")
+        for iv in result.invoices for f in iv.all_flags
+        if f.code == FlagCode.CUSTOMER_NOT_FOUND and f.context.get("customer_name")
+    })
+    if not unknown_items and not unknown_custs:
+        return
+
+    tax_categories = list(store.tax_rates().keys())
+    with st.expander("➕ Optional: add the unknown items / customers to the memory (all at once)"):
+        if unknown_items:
+            st.markdown(f"**{len(unknown_items)} unknown item(s)** — fill in the item_code, then Save.")
+            seed = pd.DataFrame(
+                [{"name": n, "item_code": "", "hsn_code": "", "tax_category": "STANDARD_VAT"} for n in unknown_items]
+            )
+            edited = st.data_editor(
+                seed, hide_index=True, use_container_width=True, key="bulk_items",
+                disabled=["name"],
+                column_config={"tax_category": st.column_config.SelectboxColumn(options=tax_categories)},
+            )
+            if st.button("Save these items to the memory"):
+                n = 0
+                for _, r in edited.iterrows():
+                    code = str(r.get("item_code", "")).strip()
+                    if code:
+                        store.upsert_item(client.id, ItemEntry(
+                            name=str(r["name"]).strip(), item_code=code,
+                            hsn_code=str(r.get("hsn_code", "")).strip(),
+                            tax_category=str(r.get("tax_category", "STANDARD_VAT")).strip() or "STANDARD_VAT"))
+                        n += 1
+                st.success(f"Added {n} item(s). Re-uploading the file will now recognise them.")
+                st.rerun()
+
+        if unknown_custs:
+            st.markdown(f"**{len(unknown_custs)} unknown customer(s)** — set status/TIN (B2B needs a TIN), then Save.")
+            seed = pd.DataFrame([{"name": n, "status": "B2C", "tin": ""} for n in unknown_custs])
+            edited = st.data_editor(
+                seed, hide_index=True, use_container_width=True, key="bulk_parties",
+                disabled=["name"],
+                column_config={"status": st.column_config.SelectboxColumn(options=["B2B", "B2C"])},
+            )
+            if st.button("Save these customers to the memory"):
+                n = 0
+                for _, r in edited.iterrows():
+                    name = str(r.get("name", "")).strip()
+                    if name:
+                        store.upsert_party(client.id, PartyEntry(
+                            name=name, tin=str(r.get("tin", "")).strip(),
+                            status=str(r.get("status", "B2C")).strip().upper() or "B2C"))
+                        n += 1
+                st.success(f"Added {n} customer(s). Re-uploading the file will now recognise them.")
+                st.rerun()
 
 
 # ---------------------------------------------------------------------------

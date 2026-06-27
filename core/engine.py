@@ -72,6 +72,24 @@ class InvoiceSummary:
         return self.trader_invoice_number is not None and not self.has_errors
 
 
+def flag_signature(flag: Flag) -> tuple:
+    """Identity used to collapse repeated flags (same issue on many lines)."""
+    ctx = flag.context
+    return (flag.code, ctx.get("item_name", ""), ctx.get("customer_name", ""), flag.field or "")
+
+
+def dedupe_flags(flags: list[Flag]) -> list[Flag]:
+    seen: set = set()
+    out: list[Flag] = []
+    for f in flags:
+        sig = flag_signature(f)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        out.append(f)
+    return out
+
+
 @dataclass
 class ProcessResult:
     invoices: list[InvoiceSummary]
