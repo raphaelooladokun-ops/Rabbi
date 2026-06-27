@@ -116,7 +116,7 @@ def _render_exceptions(store: MasterStore, client: ClientConfig, result: Process
         return
 
     tax_categories = list(store.tax_rates().keys())
-    for iv in flagged:
+    for idx, iv in enumerate(flagged):
         errors = [f for f in iv.all_flags if f.is_error]
         warns = [f for f in iv.all_flags if not f.is_error]
         icon = "🛑" if errors else "⚠️"
@@ -125,42 +125,62 @@ def _render_exceptions(store: MasterStore, client: ClientConfig, result: Process
             label += f"  ·  {iv.branch}"
         label += f"  ·  {iv.customer_name}"
         with st.expander(label, expanded=bool(errors)):
-            for f in errors + warns:
-                _render_flag(store, client, iv, f, tax_categories)
+            # One invoice can flag the same unknown item/customer on several
+            # lines; show each distinct exception only once.
+            for j, flag in enumerate(_dedupe_flags(errors + warns)):
+                _render_flag(store, client, iv, flag, tax_categories, uid=f"{idx}_{j}")
 
 
-def _render_flag(store, client, iv, flag, tax_categories) -> None:
+def _flag_signature(flag) -> tuple:
+    """Identity used to collapse repeated flags within one invoice."""
+    ctx = flag.context
+    return (flag.code, ctx.get("item_name", ""), ctx.get("customer_name", ""), flag.field or "")
+
+
+def _dedupe_flags(flags):
+    seen, out = set(), []
+    for f in flags:
+        sig = _flag_signature(f)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        out.append(f)
+    return out
+
+
+def _render_flag(store, client, iv, flag, tax_categories, uid: str) -> None:
     sev = "🛑 Error" if flag.is_error else "⚠️ Warning"
     st.markdown(f"**{sev} — {flag.code.value}**: {flag.message}")
 
     if flag.code == FlagCode.ITEM_NOT_FOUND:
         name = flag.context.get("item_name", "")
-        with st.form(f"item_{iv.key}_{name}"):
+        with st.form(f"item_{uid}"):
             st.write(f"Add **{name}** to the items master for {client.name}:")
-            code = st.text_input("item_code (ITM_xxx)", key=f"code_{iv.key}_{name}")
-            hsn = st.text_input("HSN code", value=flag.context.get("hsn", ""), key=f"hsn_{iv.key}_{name}")
-            cat = st.selectbox("Tax category", tax_categories, key=f"cat_{iv.key}_{name}")
+            code = st.text_input("item_code (ITM_xxx)", key=f"code_{uid}")
+            hsn = st.text_input("HSN code", value=flag.context.get("hsn", ""), key=f"hsn_{uid}")
+            cat = st.selectbox("Tax category", tax_categories, key=f"cat_{uid}")
             if st.form_submit_button("Add item") and code:
                 store.upsert_item(client.id, ItemEntry(name=name, item_code=code, hsn_code=hsn, tax_category=cat))
                 st.rerun()
 
     elif flag.code == FlagCode.CUSTOMER_NOT_FOUND:
         name = flag.context.get("customer_name", "")
-        with st.form(f"party_{iv.key}_{name}"):
+        with st.form(f"party_{uid}"):
             st.write(f"Add **{name}** to the parties master for {client.name}:")
-            status = st.selectbox("Status", ["B2B", "B2C"], key=f"st_{iv.key}_{name}")
-            tin = st.text_input("TIN (required for B2B)", key=f"tin_{iv.key}_{name}")
+            status = st.selectbox("Status", ["B2B", "B2C"], key=f"st_{uid}")
+            tin = st.text_input("TIN (required for B2B)", key=f"tin_{uid}")
             if st.form_submit_button("Add customer"):
                 store.upsert_party(client.id, PartyEntry(name=name, tin=tin, status=status))
                 st.rerun()
 
     elif flag.code == FlagCode.INVOICE_NUMBER_OVERFLOW:
-        with st.form(f"ovr_{iv.key}"):
+        with st.form(f"ovr_{uid}"):
             st.write(
                 f"Provide a unique replacement invoice number (≤ {TRADER_INVOICE_NUMBER_MAX} chars). "
                 f"Auto-trim was unsafe: {flag.context.get('attempted', '')}"
             )
-            new = st.text_input("trader_invoice_number", value=iv.invoice_number_raw[:TRADER_INVOICE_NUMBER_MAX])
+            new = st.text_input("trader_invoice_number", value=iv.invoice_number_raw[:TRADER_INVOICE_NUMBER_MAX],
+                                key=f"ovrnum_{uid}")
             if st.form_submit_button("Use this number"):
                 st.session_state.setdefault("inv_number_overrides", {})[iv.invoice_number_raw] = new
                 st.rerun()
