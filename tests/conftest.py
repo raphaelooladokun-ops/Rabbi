@@ -15,7 +15,7 @@ def store(tmp_path):
     s.save_client(
         ClientConfig(id="friendship", name="Friendship Co", reader="friendship", b2b_expected=True)
     )
-    s.save_client(ClientConfig(id="bag", name="Bag Client", reader="bag", b2b_expected=False))
+    s.save_client(ClientConfig(id="goldcoin", name="Goldcoin", reader="goldcoin", b2b_expected=False))
     return s
 
 
@@ -44,12 +44,13 @@ def make_tally_xlsx() -> bytes:
         ["Sales Register 1-Apr-2026 to 30-Apr-2026", None, None, None, None, None, None, None],
         [None, None, None, None, None, None, None, None],
         ["Date", "Particulars", "Voucher Type", "Voucher No.", "VAT No.", "Quantity", "Rate", "Value", "Gross Total"],
-        # Invoice 1 — parent then two item lines
-        ["01/04/2026", "Acme Ltd", "Sales", "INV-001", "12345678-0001", None, None, None, "21500"],
+        # Invoice 1 — parent (Value column carries the PRE-VAT subtotal) then
+        # two item lines. All figures are pre-VAT.
+        ["01/04/2026", "Acme Ltd", "Sales", "INV-001", "12345678-0001", None, None, "20000", "21500"],
         [None, "Rice 50kg", None, None, None, "10", "2000", "20000", None],
         [None, "Bread", None, None, None, "5", "0", "0", None],
         # Invoice 2 — cash sale, single item
-        ["02/04/2026", "Cash Sales", "Sales", "INV-002", None, None, None, None, "1075"],
+        ["02/04/2026", "Cash Sales", "Sales", "INV-002", None, None, None, "1000", "1075"],
         [None, "Rice 50kg", None, None, None, "0.5", "2000", "1000", None],
     ]
     df = pd.DataFrame(grid)

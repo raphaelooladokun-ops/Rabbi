@@ -19,7 +19,7 @@ def test_seed_lookup_and_persist_across_reconnect(tmp_path):
     url = _url(tmp_path)
     s = SqlMasterStore(url)
     ensure_default_clients(s)
-    assert {c.id for c in s.list_clients()} == {"geeta", "friendship", "bag"}
+    assert {c.id for c in s.list_clients()} == {"geeta", "friendship", "goldcoin"}
 
     s.seed_items("geeta", [
         ItemEntry(name="Rice 50kg", item_code="ITM_001", hsn_code="1006", tax_category="STANDARD_VAT"),

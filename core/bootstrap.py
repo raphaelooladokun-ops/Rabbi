@@ -24,12 +24,12 @@ DEFAULT_CLIENTS = [
         notes="SALES LEDGER sheet (.xlsx). TIN and VAT rate come from the file.",
     ),
     ClientConfig(
-        id="bag",
-        name="Bag Client",
-        reader="bag",
+        id="goldcoin",
+        name="Goldcoin",
+        reader="goldcoin",
         b2b_expected=False,
-        notes="Tally Sales Register (.xls). Branch-coded voucher numbers; B2C unless a "
-        "B2B customer is added. Confirm with the operator whether any B2B customers exist.",
+        notes="Tally Sales Register. Treated like Geeta (all figures pre-VAT, tax from the "
+        "items master). Branch-coded voucher numbers; B2C unless a B2B customer is added.",
     ),
 ]
 

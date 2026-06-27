@@ -21,9 +21,9 @@ def test_geeta_reader_forward_fills_parent_onto_item_lines():
     assert rice.line_value == Decimal("20000")
     # Reader does not set the tax rate for Tally — engine derives it.
     assert rice.tax_rate is None
-    # Stated total carried from the parent's Gross Total (VAT-inclusive).
-    assert rice.invoice_stated_total == Decimal("21500")
-    assert rice.stated_total_includes_vat is True
+    # Stated total is the parent's PRE-VAT subtotal (the Value column).
+    assert rice.invoice_stated_total == Decimal("20000")
+    assert rice.stated_total_includes_vat is False
 
 
 def test_geeta_cash_sale_grouped_separately():

@@ -45,7 +45,7 @@ class ClientConfig:
 
     id: str
     name: str
-    reader: str  # "geeta" | "friendship" | "bag"
+    reader: str  # "geeta" | "friendship" | "goldcoin"
     b2b_expected: bool = False
     # Optional, operator-confirmed TIN normalisation rule for Reader B, e.g.
     # appending a missing branch suffix. Empty = no auto-normalisation.

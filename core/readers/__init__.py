@@ -4,13 +4,13 @@ from __future__ import annotations
 from .base import Reader, ReadResult
 from .geeta import GeetaReader
 from .friendship import FriendshipReader
-from .bag import BagReader
+from .goldcoin import GoldcoinReader
 
 # Registry keyed by ClientConfig.reader.
 READERS: dict[str, type[Reader]] = {
     "geeta": GeetaReader,
     "friendship": FriendshipReader,
-    "bag": BagReader,
+    "goldcoin": GoldcoinReader,
 }
 
 
@@ -28,7 +28,7 @@ __all__ = [
     "ReadResult",
     "GeetaReader",
     "FriendshipReader",
-    "BagReader",
+    "GoldcoinReader",
     "READERS",
     "get_reader",
 ]

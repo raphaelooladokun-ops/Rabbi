@@ -79,6 +79,13 @@ class FriendshipReader(Reader):
         except ValueError as exc:
             return ReadResult(rows=[], file_errors=[str(exc)])
 
+        # The pre-VAT line-total column sits between Base P and VAT and often
+        # has a blank header; map it positionally if it wasn't named.
+        if "line_total" not in cols and "base_p" in cols:
+            candidate = cols["base_p"] + 1
+            if candidate < grid.shape[1] and candidate not in cols.values():
+                cols["line_total"] = candidate
+
         rows: list[LineRow] = []
         for r in range(header_row + 1, len(grid)):
             invoice_no = clean_str(cell(grid, r, cols.get("invoice_no")))
@@ -111,7 +118,8 @@ class FriendshipReader(Reader):
         except ParseError as exc:
             row.add_flag(FlagCode.BROKEN_SOURCE_VALUE, Severity.WARNING, str(exc), "invoice_date")
 
-        # Quantity and VAT-exclusive unit price (Base P).
+        # Quantity and VAT-EXCLUSIVE unit price (Base P) — output unit_price
+        # must be pre-VAT, so we use Base P, never the VAT-inclusive Unit Price.
         try:
             row.quantity = parse_decimal(cell(grid, r, cols.get("qty")), field="quantity")
         except ParseError as exc:
@@ -120,14 +128,13 @@ class FriendshipReader(Reader):
             row.unit_price = parse_decimal(cell(grid, r, cols.get("base_p")), field="base price")
         except ParseError as exc:
             row.add_flag(FlagCode.BROKEN_SOURCE_VALUE, Severity.ERROR, str(exc), "unit_price")
-        try:
-            row.line_value = parse_decimal(cell(grid, r, cols.get("line_total")), field="line total")
-        except ParseError as exc:
-            row.add_flag(FlagCode.BROKEN_SOURCE_VALUE, Severity.WARNING, str(exc), "line_value")
-        if row.line_value is None and row.unit_price is not None and row.quantity:
+
+        # Pre-VAT line value used in reconciliation = quantity x Base P.
+        if row.unit_price is not None and row.quantity is not None:
             row.line_value = row.unit_price * row.quantity
 
-        # VAT rate straight from the file; blank means exempt -> 0.
+        # VAT rate straight from the file's VAT column (0.075 / blank=0). We do
+        # NOT derive Friendship's tax from the items master.
         row.tax_rate = self._parse_rate(grid, r, cols, row)
 
         # TIN straight from the file. "#N/A" / blank -> handled by engine as B2C.
@@ -136,17 +143,18 @@ class FriendshipReader(Reader):
             row.customer_tin = tin
             row.tin_from_file = True
 
-        # "Total Invoice Value" in this file is the per-line VAT-inclusive
-        # amount (a multi-line invoice repeats the Invoice No with a different
-        # value on each row), so the engine sums it to get the invoice total.
+        # Reconcile against the PRE-VAT invoice subtotal: the file's stated
+        # pre-VAT line total (Base P x qty column), summed per invoice. VAT is
+        # excluded from both sides, so no 7.5% drift.
         try:
-            row.invoice_stated_total = parse_decimal(
-                cell(grid, r, cols.get("total_invoice")), field="total invoice value"
-            )
-            row.stated_total_includes_vat = True
+            stated = parse_decimal(cell(grid, r, cols.get("line_total")), field="line total")
+        except ParseError as exc:
+            row.add_flag(FlagCode.BROKEN_SOURCE_VALUE, Severity.WARNING, str(exc), "line_value")
+            stated = None
+        if stated is not None:
+            row.invoice_stated_total = stated
+            row.stated_total_includes_vat = False
             row.stated_total_is_per_line = True
-        except ParseError:
-            row.invoice_stated_total = None
 
         row.raw = {
             "category": clean_str(cell(grid, r, cols.get("category"))),

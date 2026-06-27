@@ -32,11 +32,15 @@ def test_geeta_end_to_end_resolves_codes_rates_and_kind(store, geeta_client):
     assert inv2.party_tin is None
 
 
-def test_reconciliation_matches_gross_total(store, geeta_client):
+def test_reconciliation_matches_pre_vat_subtotal(store, geeta_client):
     rows = get_reader("geeta").read(make_tally_xlsx()).rows
     result = process(rows, geeta_client, store)
-    # 20000*1.075 + 0 = 21500 matches stated Gross Total -> no mismatch flag.
+    # Pre-VAT line sum (20000 + 0) matches the pre-VAT subtotal 20000 -> no
+    # mismatch. (Reconciling against the 21500 gross would be off by 7.5%.)
     assert FlagCode.INVOICE_TOTAL_MISMATCH not in _codes(result.invoices)
+    inv1 = [iv for iv in result.invoices if iv.invoice_number_raw == "INV-001"][0]
+    assert inv1.stated_total == Decimal("20000")
+    assert inv1.stated_includes_vat is False
 
 
 def test_unknown_item_flags_error(store, geeta_client):
@@ -67,10 +71,11 @@ def test_friendship_uses_file_tin_and_flags_na_customer(store):
     # F-101 had #N/A TIN and customer not in master -> B2C + flagged.
     assert by_num["F-101"].invoice_kind == "B2C"
     assert FlagCode.CUSTOMER_NOT_FOUND in _codes([by_num["F-101"]])
-    # Per-line "Total Invoice Value" is summed across the multi-line invoice,
-    # so reconciliation must NOT raise a false mismatch.
+    # Pre-VAT line totals are summed across the multi-line invoice and
+    # reconciled VAT-exclusive, so no false mismatch and no 7.5% drift.
     assert FlagCode.INVOICE_TOTAL_MISMATCH not in _codes([by_num["F-100"]])
-    assert by_num["F-100"].stated_total == Decimal("21500")  # 10750 + 10750
+    assert by_num["F-100"].stated_total == Decimal("20000")  # 10000 + 10000 pre-VAT
+    assert by_num["F-100"].stated_includes_vat is False
 
 
 def test_item_resolves_by_hsn_when_name_differs(store):

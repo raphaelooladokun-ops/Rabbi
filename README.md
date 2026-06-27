@@ -45,18 +45,35 @@ app.
 
 - **Reader A — Geeta** (`geeta`): Tally "Sales Register" `.xlsx`. Parent/child
   rows; the invoice's date/voucher no./customer are forward-filled onto each
-  item line. Tax rate is derived from each item's tax category in the master
-  (never hardcoded). Customer → TIN via the parties master.
+  item line. Every figure is pre-VAT. Tax rate is derived from each item's tax
+  category in the master (never hardcoded). Customer → TIN via the parties
+  master.
 - **Reader B — Friendship Co** (`friendship`): "SALES LEDGER" `.xlsx`, flat
-  (one row per item line). TIN and VAT rate come straight from the file
-  (`#N/A` TIN → treated as B2C and flagged). Items resolve by description or
+  (one row per item line). TIN and VAT rate come straight from the file (rate
+  from the VAT column: 0.075 / blank = 0; `#N/A` TIN → treated as B2C and
+  flagged). `unit_price` is the pre-VAT Base P. Items resolve by description or
   HSN.
-- **Reader C — Bag client** (`bag`): Tally "Sales Register" `.xls`. Reuses the
-  parent/child logic. The branch is parsed from the voucher type
-  (`SALES INVOICE (KETU)` → `KETU`) and is part of the invoice key, because
-  branches run **separate** invoice sequences. The Voucher No. is used exactly
-  as written — never renumbered. B2C unless a customer is found as B2B in a
-  parties master.
+- **Reader C — Goldcoin** (`goldcoin`): Tally "Sales Register". Treated exactly
+  like Geeta for VAT/totals (pre-VAT throughout, tax from the items master).
+  The branch is parsed from the voucher type (`SALES INVOICE (KETU)` → `KETU`)
+  and is part of the invoice key, because branches run **separate** invoice
+  sequences. The Voucher No. is used exactly as written — never renumbered.
+  B2C unless a customer is found as B2B in a parties master.
+
+### VAT & totals (per client)
+
+`unit_price` in the output is **always pre-VAT (VAT-exclusive)**.
+
+- **Geeta / Goldcoin** — every figure in the file is pre-VAT; `unit_price` is
+  the rate as-is, tax rate comes from the item's category, and reconciliation
+  compares the **pre-VAT line sum against the pre-VAT subtotal** (the net/sales
+  figure), not the VAT-inclusive gross.
+- **Friendship** — tax rate is taken directly from the file's VAT column;
+  `unit_price` is the pre-VAT Base P; reconciliation is pre-VAT on both sides.
+
+Reconciling pre-VAT lines against a VAT-inclusive total was the cause of the
+earlier "off by exactly 7.5%" mismatches; a small rounding tolerance is
+allowed (`RECONCILE_TOLERANCE`).
 
 ## Master data
 
@@ -151,5 +168,5 @@ using synthetic Tally/SALES-LEDGER fixtures.
 - The exact Digitax CSV header/format from a known-good file (the column list
   here follows the brief; confirm field order and date formatting match).
 - Friendship TIN normalisation rule (e.g. appending a missing `-0001` suffix).
-- Whether the Bag client has any B2B customers.
+- Whether the Goldcoin client has any B2B customers.
 - Hosting target and the persistent-storage arrangement.

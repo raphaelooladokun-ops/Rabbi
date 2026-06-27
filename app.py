@@ -377,8 +377,8 @@ def render_settings(store: MasterStore) -> None:
             with st.form(f"client_{c.id}"):
                 name = st.text_input("Name", value=c.name)
                 reader = st.selectbox(
-                    "Reader", ["geeta", "friendship", "bag"],
-                    index=["geeta", "friendship", "bag"].index(c.reader),
+                    "Reader", ["geeta", "friendship", "goldcoin"],
+                    index=["geeta", "friendship", "goldcoin"].index(c.reader),
                 )
                 b2b = st.checkbox("Has registered B2B customers", value=c.b2b_expected)
                 tin_rule = st.text_input(
@@ -398,7 +398,7 @@ def render_settings(store: MasterStore) -> None:
         with st.form("new_client"):
             cid = st.text_input("Client id (lowercase, no spaces)")
             name = st.text_input("Name")
-            reader = st.selectbox("Reader", ["geeta", "friendship", "bag"])
+            reader = st.selectbox("Reader", ["geeta", "friendship", "goldcoin"])
             b2b = st.checkbox("Has registered B2B customers")
             if st.form_submit_button("Create client") and cid and name:
                 store.save_client(ClientConfig(id=cid, name=name, reader=reader, b2b_expected=b2b))

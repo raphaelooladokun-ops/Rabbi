@@ -71,7 +71,7 @@ class LineRow:
 
     # --- Invoice identity -------------------------------------------------
     invoice_number_raw: str = ""  # exactly as written in the source
-    branch: Optional[str] = None  # e.g. Bag client KETU/SAGAMU; part of invoice key
+    branch: Optional[str] = None  # e.g. Goldcoin KETU/SAGAMU; part of invoice key
     invoice_date: Optional[date] = None
 
     # --- Customer ---------------------------------------------------------
@@ -127,7 +127,7 @@ class LineRow:
     def invoice_key(self) -> tuple[str, str]:
         """Identity used to group lines into one invoice.
 
-        Branch is part of the key because some clients (Bag) run separate
+        Branch is part of the key because some clients (Goldcoin) run separate
         invoice sequences per branch and numbers can repeat across them.
         """
         return (self.branch or "", self.invoice_number_raw)

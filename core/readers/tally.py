@@ -62,7 +62,7 @@ def _find_header(grid, scan_rows: int = 40) -> tuple[int, dict[str, int]]:
 
 
 def _branch_from_voucher_type(voucher_type: str) -> Optional[str]:
-    """Bag client encodes the branch in the voucher type, e.g.
+    """Goldcoin encodes the branch in the voucher type, e.g.
     'SALES INVOICE (KETU)' -> 'KETU'. Geeta has none -> ``None``."""
     if "(" in voucher_type and ")" in voucher_type:
         inner = voucher_type[voucher_type.find("(") + 1 : voucher_type.rfind(")")]
@@ -112,14 +112,21 @@ def parse_tally(
             ctx_voucher = voucher_no
             voucher_type = clean_str(cell(grid, r, cols.get("voucher_type")))
             ctx_branch = _branch_from_voucher_type(voucher_type) if use_branch else None
-            # Stated invoice total: prefer Gross Total (VAT-inclusive grand
-            # total) for reconciliation against per-line gross.
+            # Stated invoice total for reconciliation is the PRE-VAT subtotal
+            # (the net/sales figure): every figure in these Tally exports is
+            # pre-VAT, so we reconcile the pre-VAT line sum against it — never
+            # against a VAT-inclusive gross (that caused the off-by-7.5%
+            # mismatches). Prefer the assessable "Value" column on the parent;
+            # fall back to whatever total column the export provides.
             try:
-                ctx_total = parse_decimal(
-                    cell(grid, r, cols.get("gross_total")), field="gross total"
-                )
+                parent_value = parse_decimal(cell(grid, r, cols.get("value")), field="value")
             except ParseError:
-                ctx_total = None
+                parent_value = None
+            try:
+                parent_gross = parse_decimal(cell(grid, r, cols.get("gross_total")), field="total")
+            except ParseError:
+                parent_gross = None
+            ctx_total = parent_value if parent_value is not None else parent_gross
             continue
 
         # --- Child item line (blank voucher no) -------------------------
@@ -146,7 +153,7 @@ def parse_tally(
             customer_name=ctx_customer or "",
             item_name=particulars,
             invoice_stated_total=ctx_total,
-            stated_total_includes_vat=True,  # Gross Total includes VAT
+            stated_total_includes_vat=False,  # pre-VAT subtotal
             raw={"quantity": qty_raw, "rate": rate_raw, "value": value_raw},
         )
 
