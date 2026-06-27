@@ -1,0 +1,11 @@
+# Streamlit app configuration (safe to commit — contains no secrets).
+[server]
+headless = true
+maxUploadSize = 50   # MB; raw sales files are small but allow headroom
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#2E7D32"

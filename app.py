@@ -20,14 +20,15 @@ from core.masters import ClientConfig, ItemEntry, MasterStore, PartyEntry
 from core.models import FlagCode
 from core.output import write_csv_bytes
 from core.readers import get_reader
+from core.store import get_master_store
 from ui.auth import login_gate, logout_button
 
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 
 @st.cache_resource
-def get_store() -> MasterStore:
-    store = MasterStore()
+def get_store():
+    store = get_master_store()
     ensure_default_clients(store)
     return store
 

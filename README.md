@@ -119,11 +119,20 @@ If unset, the app falls back to `admin` / `rabbi-change-me` and shows a warning.
 
 ### Persistence & hosting
 
-Masters live as JSON under `data/clients/` and must persist between runs, so any
-deployment needs a **persistent volume** mounted there. **Confirm the hosting
-preference with the operator before deploying.** Real client data
-(`data/clients/<id>/`, `registry.json`) is git-ignored and never committed; only
-the seed templates under `data/seed/` are tracked.
+Masters persist between runs in one of two interchangeable backends, chosen
+automatically by `core/store.py`:
+
+- **Local files (default)** — JSON under `data/clients/`. Zero setup; ideal on a
+  laptop. Real client data is git-ignored; only the seed templates under
+  `data/seed/` are tracked.
+- **Database** — set `DATABASE_URL` (Streamlit secret or env var) and the same
+  data is stored via SQLAlchemy (e.g. a free Postgres). Required on hosts with
+  an ephemeral disk such as Streamlit Community Cloud.
+
+**To put it online, follow [`DEPLOY.md`](DEPLOY.md)** — a step-by-step,
+non-technical guide (free Streamlit Community Cloud + optional free Neon
+Postgres for persistence). Confirm the hosting preference with the operator
+before deploying.
 
 ## Tests
 
