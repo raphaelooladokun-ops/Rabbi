@@ -136,12 +136,15 @@ class FriendshipReader(Reader):
             row.customer_tin = tin
             row.tin_from_file = True
 
-        # Stated invoice total is VAT-inclusive in this file.
+        # "Total Invoice Value" in this file is the per-line VAT-inclusive
+        # amount (a multi-line invoice repeats the Invoice No with a different
+        # value on each row), so the engine sums it to get the invoice total.
         try:
             row.invoice_stated_total = parse_decimal(
                 cell(grid, r, cols.get("total_invoice")), field="total invoice value"
             )
             row.stated_total_includes_vat = True
+            row.stated_total_is_per_line = True
         except ParseError:
             row.invoice_stated_total = None
 

@@ -104,6 +104,24 @@ def process(rows: list[LineRow], client: ClientConfig, store: MasterStore) -> Pr
     return ProcessResult(invoices=invoices)
 
 
+def _set_invoice_stated_total(iv: InvoiceSummary) -> None:
+    """Derive the invoice's stated total from its lines.
+
+    If lines carry a per-line stated total (Friendship), sum them; otherwise
+    use the single invoice-level total forward-filled onto every line (Tally).
+    """
+    per_line = [ln for ln in iv.lines if ln.stated_total_is_per_line and ln.invoice_stated_total is not None]
+    if per_line:
+        iv.stated_total = sum((ln.invoice_stated_total for ln in per_line), Decimal("0"))
+        iv.stated_includes_vat = per_line[0].stated_total_includes_vat
+        return
+    for ln in iv.lines:
+        if ln.invoice_stated_total is not None:
+            iv.stated_total = ln.invoice_stated_total
+            iv.stated_includes_vat = ln.stated_total_includes_vat
+            return
+
+
 # -- item resolution --------------------------------------------------------
 def _resolve_item(row: LineRow, client: ClientConfig, store: MasterStore) -> None:
     entry = store.lookup_item(client.id, name=row.item_name, hsn=row.item_hsn or "")
@@ -181,7 +199,8 @@ def _resolve_party(row: LineRow, client: ClientConfig, store: MasterStore) -> No
 
 
 def _normalize_tin(tin: str, client: ClientConfig, row: LineRow) -> str:
-    tin = tin.strip()
+    # Stray internal whitespace (e.g. "01353268- 0001") is a safe fix.
+    tin = re.sub(r"\s+", "", tin)
     if _TIN_PATTERN.match(tin):
         return tin
     # Apply an explicit, operator-confirmed suffix rule (e.g. append "-0001").
@@ -215,18 +234,13 @@ def _group_invoices(rows: list[LineRow]) -> list[InvoiceSummary]:
                 invoice_number_raw=row.invoice_number_raw,
                 invoice_date=row.invoice_date,
                 customer_name=row.customer_name,
-                stated_total=row.invoice_stated_total,
-                stated_includes_vat=row.stated_total_includes_vat,
             )
             by_key[key] = iv
             order.append(key)
         iv.lines.append(row)
-        # Invoice-level fields are taken from the first line; keep a stated
-        # total if any line carries one.
-        if iv.stated_total is None and row.invoice_stated_total is not None:
-            iv.stated_total = row.invoice_stated_total
-            iv.stated_includes_vat = row.stated_total_includes_vat
     invoices = [by_key[k] for k in order]
+    for iv in invoices:
+        _set_invoice_stated_total(iv)
     # invoice_kind: B2B if any line resolved to B2B with a TIN.
     for iv in invoices:
         b2b = next((ln for ln in iv.lines if ln.invoice_kind == "B2B" and ln.customer_tin), None)

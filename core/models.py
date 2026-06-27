@@ -99,6 +99,9 @@ class LineRow:
     # like with like.
     invoice_stated_total: Optional[Decimal] = None
     stated_total_includes_vat: bool = False
+    # Some files (e.g. Friendship) state the total per item line rather than
+    # once per invoice; the engine then sums these to get the invoice total.
+    stated_total_is_per_line: bool = False
 
     # --- Engine output ----------------------------------------------------
     trader_invoice_number: Optional[str] = None  # after the 30-char rule

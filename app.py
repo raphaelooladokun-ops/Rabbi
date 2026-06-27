@@ -226,6 +226,39 @@ def _import_table(uploaded) -> pd.DataFrame | None:
     return pd.read_excel(io.BytesIO(data), dtype=str).fillna("")
 
 
+def _norm_col(c: str) -> str:
+    return "".join(ch for ch in str(c).lower() if ch.isalnum())
+
+
+def _pick(row, columns_norm, aliases) -> str:
+    """Pull a value from a spreadsheet row by any of several column aliases.
+
+    Lets the operator import their existing helper sheets as-is, without
+    renaming columns (e.g. 'item_name', 'tax_category_code', 'hsn_.30').
+    """
+    for alias in aliases:
+        col = columns_norm.get(_norm_col(alias))
+        if col is not None:
+            val = row.get(col, "")
+            if str(val).strip():
+                return str(val).strip()
+    return ""
+
+
+# Accepted source-column names for each target field (normalised on compare).
+_ITEM_ALIASES = {
+    "name": ["name", "item_name", "item name", "description", "item description"],
+    "item_code": ["item_code", "itemcode", "code"],
+    "hsn_code": ["hsn_code", "hsn", "hsn_.30", "hsn .30", "hsn30", "hs/service code", "hs_code"],
+    "tax_category": ["tax_category", "tax_category_code", "category", "tax category"],
+}
+_PARTY_ALIASES = {
+    "name": ["name", "customer_name", "customer name", "customer", "party"],
+    "tin": ["tin", "tin no", "tin_no", "tinno"],
+    "status": ["status", "b2b/b2c", "type", "b2b_b2c"],
+}
+
+
 def render_masters(store: MasterStore, client: ClientConfig) -> None:
     st.header(f"Master data — {client.name}")
     items_tab, parties_tab = st.tabs(["Items master", "Parties master"])
@@ -254,22 +287,30 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
             st.success(f"Saved {len(entries)} items.")
 
         with st.expander("Import items from a spreadsheet (seed)"):
-            up = st.file_uploader("CSV/XLSX with columns: name, item_code, hsn_code, tax_category",
-                                  type=["csv", "xlsx"], key=f"imp_items_{client.id}")
+            st.caption(
+                "Accepts your existing helper sheet. Columns are matched flexibly: "
+                "item name (item_name/name/description), item_code, HSN (hsn/hsn_.30), "
+                "tax category (tax_category/tax_category_code)."
+            )
+            up = st.file_uploader("CSV/XLSX", type=["csv", "xlsx"], key=f"imp_items_{client.id}")
             table = _import_table(up)
             if table is not None and st.button("Import items", key=f"do_imp_items_{client.id}"):
-                entries = [
-                    ItemEntry(
-                        name=str(r.get("name", "")).strip(),
-                        item_code=str(r.get("item_code", "")).strip(),
-                        hsn_code=str(r.get("hsn_code", "")).strip(),
-                        tax_category=str(r.get("tax_category", "STANDARD_VAT")).strip() or "STANDARD_VAT",
-                    )
-                    for _, r in table.iterrows()
-                    if str(r.get("name", "")).strip()
-                ]
+                cols = {_norm_col(c): c for c in table.columns}
+                entries = []
+                for _, r in table.iterrows():
+                    name = _pick(r, cols, _ITEM_ALIASES["name"])
+                    if not name:
+                        continue
+                    entries.append(ItemEntry(
+                        name=name,
+                        item_code=_pick(r, cols, _ITEM_ALIASES["item_code"]),
+                        hsn_code=_pick(r, cols, _ITEM_ALIASES["hsn_code"]),
+                        tax_category=_pick(r, cols, _ITEM_ALIASES["tax_category"]).upper() or "STANDARD_VAT",
+                    ))
                 store.seed_items(client.id, entries)
-                st.success(f"Imported {len(entries)} items.")
+                missing_code = sum(1 for e in entries if not e.item_code)
+                st.success(f"Imported {len(entries)} items."
+                           + (f" ⚠️ {missing_code} have no item_code." if missing_code else ""))
                 st.rerun()
 
     with parties_tab:
@@ -295,19 +336,25 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
             st.success(f"Saved {len(entries)} parties.")
 
         with st.expander("Import parties from a spreadsheet (seed)"):
-            up = st.file_uploader("CSV/XLSX with columns: name, tin, status",
-                                  type=["csv", "xlsx"], key=f"imp_parties_{client.id}")
+            st.caption(
+                "Columns matched flexibly: customer name (customer_name/name), "
+                "tin (tin/TIN NO), status (B2B/B2C). A row with a TIN but no status "
+                "is treated as B2B."
+            )
+            up = st.file_uploader("CSV/XLSX", type=["csv", "xlsx"], key=f"imp_parties_{client.id}")
             table = _import_table(up)
             if table is not None and st.button("Import parties", key=f"do_imp_parties_{client.id}"):
-                entries = [
-                    PartyEntry(
-                        name=str(r.get("name", "")).strip(),
-                        tin=str(r.get("tin", "")).strip(),
-                        status=str(r.get("status", "B2C")).strip().upper() or "B2C",
-                    )
-                    for _, r in table.iterrows()
-                    if str(r.get("name", "")).strip()
-                ]
+                cols = {_norm_col(c): c for c in table.columns}
+                entries = []
+                for _, r in table.iterrows():
+                    name = _pick(r, cols, _PARTY_ALIASES["name"])
+                    if not name:
+                        continue
+                    tin = _pick(r, cols, _PARTY_ALIASES["tin"])
+                    status = _pick(r, cols, _PARTY_ALIASES["status"]).upper()
+                    if not status:
+                        status = "B2B" if tin else "B2C"
+                    entries.append(PartyEntry(name=name, tin=tin, status=status))
                 store.seed_parties(client.id, entries)
                 st.success(f"Imported {len(entries)} parties.")
                 st.rerun()

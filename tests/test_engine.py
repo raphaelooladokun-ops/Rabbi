@@ -67,6 +67,10 @@ def test_friendship_uses_file_tin_and_flags_na_customer(store):
     # F-101 had #N/A TIN and customer not in master -> B2C + flagged.
     assert by_num["F-101"].invoice_kind == "B2C"
     assert FlagCode.CUSTOMER_NOT_FOUND in _codes([by_num["F-101"]])
+    # Per-line "Total Invoice Value" is summed across the multi-line invoice,
+    # so reconciliation must NOT raise a false mismatch.
+    assert FlagCode.INVOICE_TOTAL_MISMATCH not in _codes([by_num["F-100"]])
+    assert by_num["F-100"].stated_total == Decimal("21500")  # 10750 + 10750
 
 
 def test_item_resolves_by_hsn_when_name_differs(store):

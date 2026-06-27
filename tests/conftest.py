@@ -67,14 +67,15 @@ def make_friendship_xlsx() -> bytes:
             "HSN Code", "UOM", "Dis. Qty", "Base P", "Line Total", "VAT",
             "Unit Price", "Total Invoice Value", "TIN NO",
         ],
-        # Invoice F1, two lines, B2B with TIN
+        # Invoice F1, two lines, B2B with TIN. "Total Invoice Value" is the
+        # per-line VAT-inclusive amount (matches the real Friendship file).
         [
             "05/04/2026", "F-100", "Beta Foods", "Goods", "Sugar 1kg",
-            "1701", "BAG", "10", "1000", "10000", "0.075", "1075", "21500", "87654321-0001",
+            "1701", "BAG", "10", "1000", "10000", "0.075", "1075", "10750", "87654321-0001",
         ],
         [
             "05/04/2026", "F-100", "Beta Foods", "Goods", "Salt 500g",
-            "2501", "BAG", "20", "500", "10000", "0.075", "537.5", "21500", "87654321-0001",
+            "2501", "BAG", "20", "500", "10000", "0.075", "537.5", "10750", "87654321-0001",
         ],
         # Invoice F2, exempt line (blank VAT), no TIN (#N/A)
         [
