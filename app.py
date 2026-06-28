@@ -33,7 +33,7 @@ from core import reference
 from core.proposals import propose_items, propose_party, run_period
 from core.reference import invoice_type_label, is_valid_hsn, is_valid_service_code
 from core.readers import get_reader
-from core.store import get_master_store
+from core.store import get_master_store, using_database
 from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_button
 
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
@@ -790,6 +790,10 @@ def main() -> None:
     pages = ["Convert", "How-to"] if not admin else ["Convert", "Master data", "Clients & settings", "How-to"]
     with st.sidebar:
         st.header("Rabbi Consult")
+        if using_database():
+            st.success("💾 Storage: Database (saved permanently)")
+        else:
+            st.warning("⚠️ Storage: Local (resets on restart — connect DATABASE_URL)")
         page = st.radio("Page", pages)
         client = None
         if page in ("Convert", "Master data"):

@@ -25,6 +25,11 @@ def _database_url() -> str:
         return ""
 
 
+def using_database() -> bool:
+    """True if a DATABASE_URL is configured (persistent storage)."""
+    return bool(_database_url())
+
+
 def get_master_store() -> Union[MasterStore, "object"]:
     url = _database_url()
     if url:
