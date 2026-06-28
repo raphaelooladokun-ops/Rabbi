@@ -35,26 +35,38 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _is_sha256(text: str) -> bool:
+    text = text.strip()
+    return len(text) == 64 and all(c in "0123456789abcdef" for c in text.lower())
+
+
 @dataclass
 class User:
     username: str
-    password_hash: str
-    role: str = "admin"  # "admin" | "rep"
+    password: str  # plaintext OR a sha256 hex hash — both accepted
+    role: str = "admin"  # "admin" = full access; anything else = restricted
     clients: object = ALL_CLIENTS  # ALL_CLIENTS or list[str]
 
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
 
+    def matches(self, entered: str) -> bool:
+        stored = self.password.strip()
+        if _is_sha256(stored):
+            return stored.lower() == _sha256(entered)
+        return stored == entered
+
 
 def _parse_record(username: str, value) -> User:
-    # Bare hash string -> admin with all clients (back-compat).
+    # Bare string value -> admin with all clients (back-compat).
     if isinstance(value, str):
-        return User(username, value.lower(), "admin", ALL_CLIENTS)
-    pw = str(value.get("password", "")).lower()
+        return User(username, value, "admin", ALL_CLIENTS)
+    pw = str(value.get("password", ""))
     role = str(value.get("role", "admin")).lower()
-    clients = value.get("clients", ALL_CLIENTS)
-    if role == "admin" or clients in (ALL_CLIENTS, None, "all"):
+    # Accept "clients" (list or str) or "client" (single id).
+    clients = value.get("clients", value.get("client", ALL_CLIENTS))
+    if role == "admin" or clients in (ALL_CLIENTS, None, "all", ""):
         clients = ALL_CLIENTS
     elif isinstance(clients, str):
         clients = [clients]
@@ -96,7 +108,7 @@ def login_gate() -> bool:
         submitted = st.form_submit_button("Sign in")
     if submitted:
         user = users.get(username)
-        if user and user.password_hash == _sha256(password):
+        if user and user.matches(password):
             st.session_state["authenticated"] = True
             st.session_state["username"] = username
             st.session_state["role"] = user.role
