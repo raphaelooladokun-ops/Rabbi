@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-# Fixed Digitax constants.
-INVOICE_TYPE_CODE = "388"  # commercial invoice
+# Fixed Digitax constants. The invoice type code is taken from the Digitax
+# invoice-type reference (source of truth): "Commercial Invoice" -> 381.
+from .reference import invoice_type_code_for  # noqa: E402
+
+INVOICE_TYPE_CODE = invoice_type_code_for("Commercial Invoice") or "381"
 DOCUMENT_CURRENCY_CODE = "NGN"
 
 # Default tax-category -> VAT rate map, from the official Digitax tax-category

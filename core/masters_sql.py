@@ -27,7 +27,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Engine
 
-from .config import DEFAULT_TAX_RATES
+from .config import DEFAULT_TAX_RATES, INVOICE_TYPE_CODE
 from .masters import ClientConfig, ItemEntry, PartyEntry
 from .parsing import normalize_key
 
@@ -98,7 +98,7 @@ class SqlMasterStore:
                 id=r["id"], name=r["name"], reader=r["reader"],
                 b2b_expected=bool(r["b2b_expected"]),
                 tin_suffix_rule=r["tin_suffix_rule"] or "",
-                invoice_type_code=r["invoice_type_code"] or "388",
+                invoice_type_code=r["invoice_type_code"] or INVOICE_TYPE_CODE,
                 notes=r["notes"] or "",
             )
             for r in rows

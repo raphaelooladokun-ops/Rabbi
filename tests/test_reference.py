@@ -22,6 +22,15 @@ def test_invoice_type_reference_labels():
     assert types["388"] == "Statement of Account"
     assert types["381"] == "Commercial Invoice"
     assert reference.invoice_type_label("388") == "Statement of Account"
+    # Reverse lookup drives the default invoice_type_code (source of truth).
+    assert reference.invoice_type_code_for("Commercial Invoice") == "381"
+
+
+def test_default_invoice_type_code_is_commercial_invoice():
+    from core.config import INVOICE_TYPE_CODE
+    from core.masters import ClientConfig
+    assert INVOICE_TYPE_CODE == "381"
+    assert ClientConfig(id="x", name="X", reader="geeta").invoice_type_code == "381"
 
 
 def test_hsn_and_service_validation():

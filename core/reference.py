@@ -102,6 +102,15 @@ def invoice_type_label(code: str) -> str:
     return invoice_types().get(str(code).strip(), "")
 
 
+def invoice_type_code_for(label: str) -> str:
+    """Reverse lookup: Digitax label -> code (case-insensitive). '' if none."""
+    target = _norm(label)
+    for code, value in invoice_types().items():
+        if _norm(value) == target:
+            return code
+    return ""
+
+
 # -- HSN product codes ------------------------------------------------------
 @lru_cache(maxsize=1)
 def _hsn_digit_set() -> set[str]:

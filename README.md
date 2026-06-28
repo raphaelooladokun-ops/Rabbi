@@ -138,7 +138,9 @@ straight to the invoices file.
 ## Output — Digitax CSV
 
 One row per item line, with exactly the columns Digitax expects (see
-`core/config.py: DIGITAX_COLUMNS`). `invoice_type_code = 388`,
+`core/config.py: DIGITAX_COLUMNS`). `invoice_type_code` defaults to `381`
+(the Digitax invoice-type reference's code for "Commercial Invoice" — the
+reference is the source of truth; editable per client),
 `document_currency_code = NGN`, `unit_price` is VAT-exclusive, `tax_rate`
 carries the per-line VAT rate, `invoice_kind` is `B2B`/`B2C`. **Validate a
 processed run against a known-good Digitax CSV for the same period before going
@@ -197,11 +199,6 @@ using synthetic Tally/SALES-LEDGER fixtures.
   columns/sheets) and a few sample raw exports per client to validate against.
 - The exact Digitax CSV header/format from a known-good file (the column list
   here follows the brief; confirm field order and date formatting match).
-- **`invoice_type_code`** — the brief specifies `388`, but the Digitax
-  invoice-type reference labels `388` = "Statement of Account" and `381` =
-  "Commercial Invoice". It's left at `388` (per the brief) and is editable per
-  client under **Clients & settings**; confirm the correct code against a
-  known-good Digitax upload before going live.
 - Friendship TIN normalisation rule (e.g. appending a missing `-0001` suffix).
 - Whether the Goldcoin client has any B2B customers.
 - Hosting target and the persistent-storage arrangement.

@@ -25,7 +25,7 @@ def test_csv_one_row_per_item_line_with_fixed_constants(store, geeta_client):
     # 3 item lines across the two ready invoices.
     assert len(records) == 3
     for rec in records:
-        assert rec["invoice_type_code"] == "388"
+        assert rec["invoice_type_code"] == "381"  # Commercial Invoice per Digitax reference
         assert rec["document_currency_code"] == "NGN"
         assert rec["invoice_kind"] in {"B2B", "B2C"}
         assert rec["item_code"].startswith("ITM_")

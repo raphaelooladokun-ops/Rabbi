@@ -14,7 +14,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
-from .config import DEFAULT_TAX_RATES
+from .config import DEFAULT_TAX_RATES, INVOICE_TYPE_CODE
 from .parsing import normalize_key
 
 DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "clients"
@@ -67,10 +67,10 @@ class ClientConfig:
     # Optional, operator-confirmed TIN normalisation rule for Reader B, e.g.
     # appending a missing branch suffix. Empty = no auto-normalisation.
     tin_suffix_rule: str = ""
-    # Digitax invoice_type_code written to every row. Defaults to the brief's
-    # "388"; confirm against the Digitax invoice-type reference / a known-good
-    # upload before going live (see the Clients & settings page).
-    invoice_type_code: str = "388"
+    # Digitax invoice_type_code written to every row. Defaults to the code the
+    # Digitax invoice-type reference gives for "Commercial Invoice" (381);
+    # editable per client under Clients & settings.
+    invoice_type_code: str = INVOICE_TYPE_CODE
     notes: str = ""
 
 
