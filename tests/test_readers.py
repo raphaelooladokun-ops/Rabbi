@@ -33,7 +33,7 @@ def test_geeta_cash_sale_grouped_separately():
     assert inv2[0].customer_name == "Cash Sales"
 
 
-def test_friendship_reader_flat_layout_and_tin_from_file():
+def test_friendship_reader_flat_layout_and_tin_hint():
     result = get_reader("friendship").read(make_friendship_xlsx())
     assert not result.file_errors
     assert len(result.rows) == 3
@@ -47,13 +47,14 @@ def test_friendship_reader_flat_layout_and_tin_from_file():
     assert sugar.quantity == Decimal("10")
     assert sugar.unit_price == Decimal("1000")  # Base P, VAT-exclusive
     assert sugar.tax_rate == Decimal("0.075")  # rate straight from file
-    assert sugar.customer_tin == "87654321-0001"
-    assert sugar.tin_from_file is True
+    # The ledger TIN is a hint only; output TIN comes from the parties master.
+    assert sugar.customer_tin is None
+    assert sugar.customer_tin_hint == "87654321-0001"
 
 
 def test_friendship_blank_vat_is_exempt_and_na_tin_dropped():
     result = get_reader("friendship").read(make_friendship_xlsx())
     f101 = [r for r in result.rows if r.invoice_number_raw == "F-101"][0]
     assert f101.tax_rate == Decimal("0")  # blank VAT -> exempt
-    assert f101.customer_tin is None  # "#N/A" treated as missing
-    assert f101.tin_from_file is False
+    assert f101.customer_tin is None
+    assert f101.customer_tin_hint == ""  # "#N/A" treated as missing

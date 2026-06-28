@@ -25,6 +25,7 @@ from core.output import (
     write_parties_template,
 )
 from core.digitax_resources import TAX_CATEGORY_CODES
+from core import reference
 from core.proposals import propose_items, propose_party, run_period
 from core.reference import invoice_type_label, is_valid_hsn, is_valid_service_code
 from core.readers import get_reader
@@ -256,50 +257,76 @@ def _render_party_proposals(store, client, result, unknown_custs) -> None:
             if ln.customer_name and ln.customer_name not in hints:
                 hints[ln.customer_name] = (ln.customer_tin_hint, ln.customer_address)
 
-    proposals = [
-        propose_party(name, tin_hint=hints.get(name, ("", ""))[0],
-                      address_text=hints.get(name, ("", ""))[1])
-        for name in unknown_custs
-    ]
-    st.markdown(f"**Customers ({len(proposals)})** — for B2B, fill **TIN + email + address**; "
-                "leave blank to keep B2C (not blocked).")
-    st.caption("`local_government` (NG-XX-XXX) needs the Digitax LGA code reference — it is left "
-               "editable and never guessed. `state` (NG-XX) is derived from the address when possible.")
-    pdf = pd.DataFrame([
-        {"name": p.name, "tin": p.tin, "email_address": p.email_address,
-         "street_name": p.street_name, "city_name": p.city_name, "postal_zone": p.postal_zone,
-         "state": p.state, "local_government": p.local_government, "approve": False}
-        for p in proposals
-    ])
-    edited = st.data_editor(
-        pdf, hide_index=True, use_container_width=True, key=f"newparties_{_run_key()}",
-        disabled=["name"],
-        column_config={"approve": st.column_config.CheckboxColumn(help="Tick to save this customer")},
-    )
+    st.markdown(f"**Customers ({len(unknown_custs)})** — set **B2B** for any with a TIN "
+                "(pre-filled from the sales file where present); complete the address. "
+                "Leave as **B2C** otherwise — not blocked. Nothing is fabricated.")
+    st.caption("Pick the **State**, then the **LGA** list narrows to that state (no scrolling 774).")
+
+    state_opts = [""] + [f"{n}  ({c})" for n, c in reference.states()]
+    state_code_by_label = {f"{n}  ({c})": c for n, c in reference.states()}
+
+    for i, name in enumerate(unknown_custs):
+        tin_hint, addr = hints.get(name, ("", ""))
+        prop = propose_party(name, tin_hint=tin_hint, address_text=addr)
+        k = f"{_run_key()}_{i}"
+        title = name + ("   · TIN from sales ✓" if tin_hint else "")
+        with st.expander(title):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.selectbox("Status", ["B2B", "B2C"], index=0 if tin_hint else 1, key=f"pst_{k}")
+                st.text_input("TIN", value=prop.tin, key=f"ptin_{k}")
+                st.text_input("Email address", value=prop.email_address, key=f"pem_{k}")
+                st.text_input("Phone (optional)", key=f"pph_{k}")
+            with c2:
+                st.text_input("Street", value=addr, key=f"pstr_{k}")
+                st.text_input("City", key=f"pcity_{k}")
+                st.text_input("Postal zone", key=f"ppz_{k}")
+            # State -> dependent LGA dropdowns.
+            pre_state_label = next((lbl for lbl, c in state_code_by_label.items() if c == prop.state), "")
+            s_idx = state_opts.index(pre_state_label) if pre_state_label in state_opts else 0
+            state_label = st.selectbox("State", state_opts, index=s_idx, key=f"pstate_{k}")
+            sc = state_code_by_label.get(state_label, "")
+            lga_pairs = reference.lgas_for_state(sc) if sc else []
+            lga_opts = [""] + [f"{n}  ({code})" for n, code in lga_pairs]
+            lga_code_by_label = {f"{n}  ({code})": code for n, code in lga_pairs}
+            pre_lga_label = next((lbl for lbl, c in lga_code_by_label.items() if c == prop.local_government), "")
+            l_idx = lga_opts.index(pre_lga_label) if pre_lga_label in lga_opts else 0
+            st.selectbox("LGA (local_government)", lga_opts, index=l_idx, key=f"plga_{k}")
+
     if st.button("Approve customers", key=f"approveparties_{_run_key()}"):
         created = _bucket("created_parties")
-        n_b2b = n_b2c = 0
-        for _, r in edited.iterrows():
-            if not bool(r.get("approve", False)):
+        n_b2b = n_b2c = skipped = 0
+        for i, name in enumerate(unknown_custs):
+            k = f"{_run_key()}_{i}"
+            status = st.session_state.get(f"pst_{k}", "B2C")
+            tin = str(st.session_state.get(f"ptin_{k}", "")).strip()
+            state_label = st.session_state.get(f"pstate_{k}", "")
+            sc = state_code_by_label.get(state_label, "")
+            lga_label = st.session_state.get(f"plga_{k}", "")
+            lga_pairs = reference.lgas_for_state(sc) if sc else []
+            lga_code = {f"{n}  ({code})": code for n, code in lga_pairs}.get(lga_label, "")
+            # B2B needs a real TIN; never fabricated. B2B-without-TIN -> skip.
+            if status == "B2B" and not tin:
+                skipped += 1
                 continue
-            tin = str(r.get("tin", "")).strip()
-            email = str(r.get("email_address", "")).strip()
-            street = str(r.get("street_name", "")).strip()
-            is_b2b = bool(tin and email and street)
             entry = PartyEntry(
-                name=str(r["name"]), tin=tin, status="B2B" if is_b2b else "B2C",
-                email_address=email, street_name=street,
-                city_name=str(r.get("city_name", "")).strip(),
-                postal_zone=str(r.get("postal_zone", "")).strip(), country="NGA",
-                local_government=str(r.get("local_government", "")).strip(),
-                state=str(r.get("state", "")).strip())
+                name=name, tin=tin, status=status,
+                email_address=str(st.session_state.get(f"pem_{k}", "")).strip(),
+                phone_number=str(st.session_state.get(f"pph_{k}", "")).strip(),
+                street_name=str(st.session_state.get(f"pstr_{k}", "")).strip(),
+                city_name=str(st.session_state.get(f"pcity_{k}", "")).strip(),
+                postal_zone=str(st.session_state.get(f"ppz_{k}", "")).strip(),
+                country="NGA", local_government=lga_code, state=sc)
             store.upsert_party(client.id, entry)
-            if is_b2b:
-                created[entry.name] = entry
+            if status == "B2B":
+                created[name] = entry
                 n_b2b += 1
             else:
                 n_b2c += 1
-        st.success(f"Saved {n_b2b} B2B and {n_b2c} B2C customer(s).")
+        msg = f"Saved {n_b2b} B2B and {n_b2c} B2C customer(s)."
+        if skipped:
+            msg += f" ⚠️ {skipped} marked B2B but had no TIN — skipped (TINs are never invented)."
+        st.success(msg)
         st.rerun()
 
 

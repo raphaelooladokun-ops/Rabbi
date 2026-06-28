@@ -77,10 +77,10 @@ class LineRow:
     # --- Customer ---------------------------------------------------------
     customer_name: str = ""
     customer_tin: Optional[str] = None
-    tin_from_file: bool = False  # True if the TIN came straight from the source
     # Raw TIN / address text seen near the customer in the source (e.g. the
-    # Tally "VAT No." column). Used only to PROPOSE a new B2B party — never to
-    # silently set the TIN on output.
+    # Tally "VAT No." column or the Friendship ledger's TIN). Used only to
+    # PRE-FILL a new-party proposal — the output TIN always comes from the
+    # parties master, never straight from the sales file.
     customer_tin_hint: str = ""
     customer_address: str = ""
 

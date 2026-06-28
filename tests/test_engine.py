@@ -72,7 +72,7 @@ def test_unknown_item_flags_error(store, geeta_client):
     assert inv1.ready is False
 
 
-def test_friendship_uses_file_tin_and_flags_na_customer(store):
+def test_friendship_party_tin_comes_from_master_not_sales_file(store):
     store.seed_items(
         "friendship",
         [
@@ -83,18 +83,25 @@ def test_friendship_uses_file_tin_and_flags_na_customer(store):
     )
     client = store.get_client("friendship")
     rows = get_reader("friendship").read(make_friendship_xlsx()).rows
+
+    # Beta Foods is NOT in the parties master yet, even though the ledger has a
+    # TIN -> treated as B2C and flagged (the file TIN is only a hint).
     result = process(rows, client, store)
     by_num = {iv.invoice_number_raw: iv for iv in result.invoices}
-    assert by_num["F-100"].invoice_kind == "B2B"
-    assert by_num["F-100"].party_tin == "87654321-0001"
-    # F-101 had #N/A TIN and customer not in master -> B2C + flagged.
-    assert by_num["F-101"].invoice_kind == "B2C"
-    assert FlagCode.CUSTOMER_NOT_FOUND in _codes([by_num["F-101"]])
-    # Pre-VAT line totals are summed across the multi-line invoice and
-    # reconciled VAT-exclusive, so no false mismatch and no 7.5% drift.
-    assert FlagCode.INVOICE_TOTAL_MISMATCH not in _codes([by_num["F-100"]])
-    assert by_num["F-100"].stated_total == Decimal("20000")  # 10000 + 10000 pre-VAT
-    assert by_num["F-100"].stated_includes_vat is False
+    assert by_num["F-100"].invoice_kind == "B2C"
+    assert by_num["F-100"].party_tin is None
+    assert FlagCode.CUSTOMER_NOT_FOUND in _codes([by_num["F-100"]])
+    # The ledger TIN is preserved as a hint to pre-fill the new-party proposal.
+    assert any(ln.customer_tin_hint == "87654321-0001" for ln in by_num["F-100"].lines)
+
+    # Add the customer to the master as B2B -> output TIN now comes from there.
+    store.upsert_party("friendship", PartyEntry(name="Beta Foods", tin="87654321-0001", status="B2B"))
+    result2 = process(rows, client, store)
+    f100 = [iv for iv in result2.invoices if iv.invoice_number_raw == "F-100"][0]
+    assert f100.invoice_kind == "B2B"
+    assert f100.party_tin == "87654321-0001"
+    assert FlagCode.INVOICE_TOTAL_MISMATCH not in _codes([f100])
+    assert f100.stated_total == Decimal("20000")  # 10000 + 10000 pre-VAT
 
 
 def test_item_resolves_by_hsn_when_name_differs(store):

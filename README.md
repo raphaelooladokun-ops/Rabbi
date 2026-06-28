@@ -105,14 +105,15 @@ proposes them for approval before anything is written:
   `tax_category_code` / `is_service` drafted from the master's existing
   patterns and **HSN left for the operator to fill**. One physical item gets
   one code per run.
-- **Parties** — a new **B2B** party is only created when the real details exist
-  (**TIN + email + address**); TINs and emails are never fabricated. For
-  Geeta/Goldcoin the TIN is read from the raw file's VAT No. column when
-  present. `state` (NG-XX) and `local_government` (NG-XX-XXX) are derived from
-  the address using the bundled Digitax state/LGA reference when an LGA is
-  recognised, and left editable otherwise (never guessed). Without the required
-  details the customer stays **B2C** for the run (flagged "could be B2B once
-  details are obtained") and is not blocked.
+- **Parties** — the output party TIN **always comes from the parties master**,
+  for every client. A TIN sitting in the sales file (Friendship's ledger, or a
+  Geeta/Goldcoin VAT No.) is treated only as a **hint**: an unknown customer is
+  B2C until added to the master. In the customers section each unknown customer
+  has its TIN pre-filled from the sales file where present; the operator sets
+  the status (B2B needs a real TIN — never fabricated) and completes the
+  address via a **State dropdown that filters the LGA dropdown to that state**
+  (NG-XX / NG-XX-XXX from the bundled reference, so no scrolling 774 LGAs).
+  Customers left without a TIN stay **B2C** and are not blocked.
 
 On approval the new items/parties are appended to the persistent masters and
 written to Digitax upload templates. **Staged output** then enforces order:

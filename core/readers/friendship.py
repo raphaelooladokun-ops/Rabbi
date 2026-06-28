@@ -137,11 +137,12 @@ class FriendshipReader(Reader):
         # NOT derive Friendship's tax from the items master.
         row.tax_rate = self._parse_rate(grid, r, cols, row)
 
-        # TIN straight from the file. "#N/A" / blank -> handled by engine as B2C.
+        # The ledger TIN is kept only as a HINT to pre-fill a new-party
+        # proposal. The output TIN comes from the parties master, so an unknown
+        # customer is treated as B2C until added there (with this TIN).
         tin = clean_str(cell(grid, r, cols.get("tin")))
         if tin and not is_blank(tin):
-            row.customer_tin = tin
-            row.tin_from_file = True
+            row.customer_tin_hint = tin
 
         # Reconcile against the PRE-VAT invoice subtotal: the file's stated
         # pre-VAT line total (Base P x qty column), summed per invoice. VAT is

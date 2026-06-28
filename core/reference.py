@@ -57,6 +57,20 @@ def state_code_from_text(text: str) -> str:
     return ""
 
 
+@lru_cache(maxsize=1)
+def states() -> list[tuple[str, str]]:
+    """(display name, NG-XX code) for all states, sorted by name (for dropdowns)."""
+    rows = [(r["name"].strip(), r["code"].strip()) for r in _read("state_codes.csv") if r.get("name")]
+    return sorted(rows, key=lambda x: x[0])
+
+
+def state_name(code: str) -> str:
+    for name, c in states():
+        if c == code:
+            return name
+    return ""
+
+
 # -- LGAs -------------------------------------------------------------------
 @dataclass(frozen=True)
 class Lga:
@@ -71,6 +85,20 @@ def _lgas() -> list[Lga]:
         Lga(r["name"].strip(), r["lga_code"].strip(), r["state_code"].strip())
         for r in _read("lga_codes.csv") if r.get("name")
     ]
+
+
+@lru_cache(maxsize=64)
+def lgas_for_state(state_code: str) -> list[tuple[str, str]]:
+    """(LGA name, NG-XX-XXX code) within a state, sorted by name (for dropdowns)."""
+    rows = [(l.name, l.lga_code) for l in _lgas() if l.state_code == state_code]
+    return sorted(rows, key=lambda x: x[0])
+
+
+def lga_name(lga_code: str) -> str:
+    for lga in _lgas():
+        if lga.lga_code == lga_code:
+            return lga.name
+    return ""
 
 
 def lga_from_text(text: str, state_code: str = "") -> tuple[str, str]:

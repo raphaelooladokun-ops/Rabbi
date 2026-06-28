@@ -185,14 +185,14 @@ def _resolve_item(row: LineRow, client: ClientConfig, store: MasterStore) -> Non
 
 # -- party / TIN resolution -------------------------------------------------
 def _resolve_party(row: LineRow, client: ClientConfig, store: MasterStore) -> None:
-    name_norm = row.customer_name.strip().lower()
+    """Resolve the party TIN/status from the PARTIES MASTER only.
 
-    # TIN already in the source file (Reader B): use it directly, validate.
-    if row.tin_from_file and row.customer_tin:
-        tin = _normalize_tin(row.customer_tin, client, row)
-        row.customer_tin = tin
-        row.invoice_kind = "B2B"
-        return
+    The party TIN written to the output always comes from the master, for every
+    client. A TIN sitting in the sales file (e.g. Friendship's ledger) is only
+    a *hint* (``customer_tin_hint``) used to pre-fill a new-party proposal — it
+    is never used directly on the invoice.
+    """
+    name_norm = row.customer_name.strip().lower()
 
     # Inherently-B2C names never need a party lookup.
     if name_norm in _CASH_NAMES:
