@@ -11,7 +11,7 @@ from decimal import Decimal
 from typing import Callable, Optional, Union
 
 from ..models import FlagCode, LineRow, Severity
-from ..parsing import ParseError, clean_str, is_blank, parse_date, parse_decimal
+from ..parsing import ParseError, clean_str, is_blank, looks_like_tin, parse_date, parse_decimal
 from .base import Reader, ReadResult, Source, cell, load_grid
 
 # Ordered, most-specific-first column matchers. Each header cell is assigned
@@ -139,9 +139,10 @@ class FriendshipReader(Reader):
 
         # The ledger TIN is kept only as a HINT to pre-fill a new-party
         # proposal. The output TIN comes from the parties master, so an unknown
-        # customer is treated as B2C until added there (with this TIN).
+        # customer is treated as B2C until added there (with this TIN). Junk
+        # like "NOT APPLICABLE" is ignored (must look like a real TIN).
         tin = clean_str(cell(grid, r, cols.get("tin")))
-        if tin and not is_blank(tin):
+        if looks_like_tin(tin):
             row.customer_tin_hint = tin
 
         # Reconcile against the PRE-VAT invoice subtotal: the file's stated

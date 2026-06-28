@@ -104,6 +104,27 @@ def test_friendship_party_tin_comes_from_master_not_sales_file(store):
     assert f100.stated_total == Decimal("20000")  # 10000 + 10000 pre-VAT
 
 
+def test_junk_tin_not_applicable_never_reaches_invoice(store):
+    # A bogus "NOT APPLICABLE" TIN in the master must not produce a B2B
+    # invoice or emit the junk value.
+    store.seed_items("friendship", [ItemEntry(name="Sugar 1kg", item_code="ITM_S", tax_category="STANDARD_VAT")])
+    store.upsert_party("friendship", PartyEntry(name="Beta Foods", tin="NOT APPLICABLE", status="B2B"))
+    client = store.get_client("friendship")
+    rows = get_reader("friendship").read(make_friendship_xlsx()).rows
+    result = process(rows, client, store)
+    f100 = [iv for iv in result.invoices if iv.invoice_number_raw == "F-100"][0]
+    assert f100.invoice_kind == "B2C"
+    assert f100.party_tin is None
+
+
+def test_friendship_ignores_not_applicable_tin_hint():
+    # "#N/A" is already blank; ensure a non-digit TIN isn't kept as a hint.
+    from core.parsing import looks_like_tin
+    assert looks_like_tin("NOT APPLICABLE") is False
+    assert looks_like_tin("01058206-0001") is True
+    assert looks_like_tin("1234567") is False  # only 7 digits
+
+
 def test_item_resolves_by_hsn_when_name_differs(store):
     store.seed_items(
         "friendship",

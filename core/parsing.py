@@ -15,11 +15,25 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 # Markers that mean "no usable value" rather than a real datum.
-_NA_MARKERS = {"", "#n/a", "n/a", "na", "nil", "none", "-", "--", "nan"}
+_NA_MARKERS = {
+    "", "#n/a", "n/a", "na", "nil", "none", "-", "--", "nan",
+    "not applicable", "not aplicable", "n.a.", "n/a.",
+}
 
 
 class ParseError(ValueError):
     """Raised when a cell cannot be interpreted (vs. being legitimately blank)."""
+
+
+def looks_like_tin(value: Any) -> bool:
+    """True only if the value plausibly is a TIN (>= 8 digits).
+
+    Guards against junk like "NOT APPLICABLE" being treated as a real TIN and
+    ending up on an invoice or in a party upload.
+    """
+    if is_blank(value):
+        return False
+    return len(re.sub(r"\D", "", str(value))) >= 8
 
 
 def is_blank(value: Any) -> bool:

@@ -8,6 +8,7 @@ between runs.
 from __future__ import annotations
 
 import io
+import re
 from decimal import Decimal
 
 import pandas as pd
@@ -24,6 +25,7 @@ from core.output import (
     write_items_template,
     write_parties_template,
 )
+from core.parsing import looks_like_tin
 from core.digitax_resources import TAX_CATEGORY_CODES
 from core import reference
 from core.proposals import propose_items, propose_party, run_period
@@ -308,23 +310,29 @@ def _party_table(group: str, names, hints, store, client, dropdowns, default_app
     )
     if st.button("Approve these customers", key=f"ptbtn_{group}_{_run_key()}"):
         created = _bucket("created_parties")
-        n_b2b = n_b2c = mismatch = 0
+        n_b2b = n_b2c = mismatch = incomplete = junk_tin = 0
         for _, r in edited.iterrows():
             if not bool(r.get("approve", False)):
                 continue
-            tin = str(r.get("tin", "")).strip()
+            tin = re.sub(r"\s+", "", str(r.get("tin", "")))  # TINs never contain spaces
             sc = s_label2code.get(str(r.get("state", "")), "")
             lc = l_label2code.get(str(r.get("local_government", "")), "")
             # Guard against an LGA picked from a different state than chosen.
             if lc and sc and not lc.startswith(sc):
                 mismatch += 1
                 lc = ""
-            status = "B2B" if tin else "B2C"  # never fabricate a TIN
+            email = str(r.get("email_address", "")).strip()
+            street = str(r.get("street_name", "")).strip()
+            # B2B requires a TIN that actually looks like one (never fabricated).
+            if tin and not looks_like_tin(tin):
+                junk_tin += 1
+                tin = ""
+            status = "B2B" if tin else "B2C"
+            if status == "B2B" and not (email and street and sc and lc):
+                incomplete += 1
             entry = PartyEntry(
-                name=str(r["name"]), tin=tin, status=status,
-                email_address=str(r.get("email_address", "")).strip(),
-                street_name=str(r.get("street_name", "")).strip(),
-                city_name=str(r.get("city_name", "")).strip(),
+                name=str(r["name"]), tin=tin, status=status, email_address=email,
+                street_name=street, city_name=str(r.get("city_name", "")).strip(),
                 postal_zone=str(r.get("postal_zone", "")).strip(),
                 country="NGA", local_government=lc, state=sc)
             store.upsert_party(client.id, entry)
@@ -334,8 +342,15 @@ def _party_table(group: str, names, hints, store, client, dropdowns, default_app
             else:
                 n_b2c += 1
         msg = f"Saved {n_b2b} B2B and {n_b2c} B2C customer(s)."
+        if junk_tin:
+            msg += f" {junk_tin} non-TIN value(s) (e.g. 'NOT APPLICABLE') dropped → saved as B2C."
         if mismatch:
-            msg += f" ⚠️ {mismatch} LGA(s) didn't match the chosen state — cleared, please re-pick."
+            msg += f" {mismatch} LGA(s) didn't match the chosen state — cleared, please re-pick."
+        if incomplete:
+            st.warning(
+                f"⚠️ {incomplete} B2B customer(s) are missing email / street / state / LGA. "
+                "Digitax will reject incomplete parties — complete them and approve again before uploading."
+            )
         st.success(msg)
         st.rerun()
 
@@ -362,6 +377,14 @@ def _render_staged_output(client: ClientConfig, result: ProcessResult) -> None:
                 file_name=f"{slug}_new_items_{period}.csv", mime="text/csv", type="primary",
             )
         if created_parties:
+            short = [p for p in created_parties
+                     if not (p.email_address and p.street_name and p.state and p.local_government)]
+            if short:
+                st.warning(
+                    f"⚠️ {len(short)} new B2B customer(s) are missing email / address / state / LGA "
+                    "(Digitax will reject incomplete parties). Complete them in the Customers section "
+                    "above and approve again before uploading."
+                )
             st.download_button(
                 f"⬇️ {slug}_new_parties_{period}.csv  ({len(created_parties)} customers)",
                 data=write_parties_template(created_parties).encode("utf-8"),

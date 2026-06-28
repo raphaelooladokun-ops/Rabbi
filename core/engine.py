@@ -21,6 +21,7 @@ from .config import (
 )
 from .masters import ClientConfig, ItemEntry, MasterStore
 from .models import FlagCode, Flag, LineRow, Severity
+from .parsing import looks_like_tin
 
 # Customer names that are inherently B2C — no party lookup, no flag.
 _CASH_NAMES = {"cash sales", "cash sale", "cash", "walk-in", "walk in customer"}
@@ -201,11 +202,13 @@ def _resolve_party(row: LineRow, client: ClientConfig, store: MasterStore) -> No
         return
 
     party = store.lookup_party(client.id, row.customer_name)
-    if party and party.status.upper() == "B2B" and party.tin:
+    # B2B only with a TIN that actually looks like one — never emit junk like
+    # "NOT APPLICABLE" even if it somehow got into the master.
+    if party and party.status.upper() == "B2B" and looks_like_tin(party.tin):
         row.customer_tin = _normalize_tin(party.tin, client, row)
         row.invoice_kind = "B2B"
         return
-    if party:  # known, but B2C
+    if party:  # known, but B2C (or no usable TIN)
         row.invoice_kind = "B2C"
         row.customer_tin = None
         return

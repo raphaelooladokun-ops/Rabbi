@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Optional, Union
 
 from ..models import FlagCode, LineRow, Severity
-from ..parsing import ParseError, clean_str, is_blank, parse_date, parse_decimal
+from ..parsing import ParseError, clean_str, is_blank, looks_like_tin, parse_date, parse_decimal
 from .base import ReadResult, Source, cell, load_grid
 
 # Header label -> the internal column name we map it to. Matched as a
@@ -111,7 +111,8 @@ def parse_tally(
                 ctx_date = None
             ctx_customer = particulars
             ctx_voucher = voucher_no
-            ctx_tin_hint = clean_str(cell(grid, r, cols.get("vat_no")))
+            vat_no = clean_str(cell(grid, r, cols.get("vat_no")))
+            ctx_tin_hint = vat_no if looks_like_tin(vat_no) else ""
             voucher_type = clean_str(cell(grid, r, cols.get("voucher_type")))
             ctx_branch = _branch_from_voucher_type(voucher_type) if use_branch else None
             # Stated invoice total for reconciliation is the PRE-VAT subtotal
