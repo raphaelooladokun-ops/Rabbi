@@ -120,7 +120,7 @@ def propose_items(
     forced = {_norm(n) for n in force_new}
 
     proposals: list[ItemProposal] = []
-    new_names: list[str] = []
+    new_items: list[tuple[str, Optional[ItemEntry]]] = []
     for name in names:
         match, score = fuzzy_best_item(name, items)
         if _norm(name) not in forced and match and score >= fuzzy_threshold:
@@ -132,14 +132,21 @@ def propose_items(
                 is_service=match.is_service,
             ))
         else:
-            new_names.append(name)
+            new_items.append((name, match))  # match = nearest item (below threshold)
 
-    codes = next_item_codes(items, len(new_names))
-    for name, code in zip(new_names, codes):
+    codes = next_item_codes(items, len(new_items))
+    for (name, near), code in zip(new_items, codes):
+        # Draft from the closest existing item so the HSN (in the master's
+        # format), category and tax_category follow existing patterns. The
+        # operator reviews/edits before approving.
+        hsn = near.hsn_code if near else ""
+        category = (near.item_category if near and near.item_category else default_category)
+        tax = (near.tax_category if near and near.tax_category else default_tax)
+        is_service = near.is_service if near else False
         proposals.append(ItemProposal(
             name=name, kind="new", item_code=code,
-            item_category=default_category, hsn_code="", description=name,
-            tax_category_code=default_tax, is_service=False,
+            item_category=category, hsn_code=hsn, description=name,
+            tax_category_code=tax, is_service=is_service,
         ))
     return proposals
 

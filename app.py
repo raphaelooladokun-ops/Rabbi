@@ -214,7 +214,8 @@ def _render_item_proposals(store: MasterStore, client: ClientConfig, unknown_ite
             st.rerun()
 
     if new:
-        st.markdown(f"**New items ({len(new)})** — review (HSN code required), then approve.")
+        st.markdown(f"**New items ({len(new)})** — HSN/category are **drafted from the closest "
+                    "existing item** (verify the HSN), then approve.")
         ndf = pd.DataFrame([
             {"name": p.name, "item_code": p.item_code, "item_category": p.item_category,
              "hsn_code": p.hsn_code, "description": p.description,
