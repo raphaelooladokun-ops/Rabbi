@@ -85,6 +85,10 @@ class MasterStore:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        # In-memory caches keyed by client_id, validated by the file's mtime so
+        # the engine doesn't re-parse the whole master on every line/rerun.
+        self._items_cache: dict[str, tuple] = {}
+        self._parties_cache: dict[str, tuple] = {}
 
     # -- paths -------------------------------------------------------------
     @property
@@ -160,25 +164,41 @@ class MasterStore:
         return self.tax_rates().get(category.strip().upper())
 
     # -- items -------------------------------------------------------------
+    @staticmethod
+    def _mtime(path: Path) -> int:
+        return path.stat().st_mtime_ns if path.exists() else 0
+
+    def _items_indexed(self, client_id: str) -> tuple[list[ItemEntry], dict, dict]:
+        """(items, name_index, hsn_index), cached and rebuilt only when the
+        underlying file changes — so lookups are O(1) and parsed once."""
+        path = self._items_path(client_id)
+        mtime = self._mtime(path)
+        cached = self._items_cache.get(client_id)
+        if cached and cached[0] == mtime:
+            return cached[1], cached[2], cached[3]
+        items = [ItemEntry(**e) for e in self._read_json(path, [])]
+        name_idx = {normalize_key(e.name): e for e in items}
+        hsn_idx: dict = {}
+        for e in items:
+            if e.hsn_code:
+                hsn_idx.setdefault(normalize_key(e.hsn_code), e)
+        self._items_cache[client_id] = (mtime, items, name_idx, hsn_idx)
+        return items, name_idx, hsn_idx
+
     def list_items(self, client_id: str) -> list[ItemEntry]:
-        raw = self._read_json(self._items_path(client_id), [])
-        return [ItemEntry(**e) for e in raw]
+        return list(self._items_indexed(client_id)[0])
 
     def lookup_item(
         self, client_id: str, *, name: str = "", hsn: str = ""
     ) -> Optional[ItemEntry]:
         """Resolve an item by name first, then (for Reader B) by HSN code."""
-        items = self.list_items(client_id)
+        _, name_idx, hsn_idx = self._items_indexed(client_id)
         name_key = normalize_key(name)
-        if name_key:
-            for e in items:
-                if normalize_key(e.name) == name_key:
-                    return e
+        if name_key and name_key in name_idx:
+            return name_idx[name_key]
         hsn_key = normalize_key(hsn)
-        if hsn_key:
-            for e in items:
-                if e.hsn_code and normalize_key(e.hsn_code) == hsn_key:
-                    return e
+        if hsn_key and hsn_key in hsn_idx:
+            return hsn_idx[hsn_key]
         return None
 
     def upsert_item(self, client_id: str, entry: ItemEntry) -> None:
@@ -196,18 +216,25 @@ class MasterStore:
             )
 
     # -- parties -----------------------------------------------------------
+    def _parties_indexed(self, client_id: str) -> tuple[list[PartyEntry], dict]:
+        path = self._parties_path(client_id)
+        mtime = self._mtime(path)
+        cached = self._parties_cache.get(client_id)
+        if cached and cached[0] == mtime:
+            return cached[1], cached[2]
+        parties = [PartyEntry(**e) for e in self._read_json(path, [])]
+        name_idx = {normalize_key(e.name): e for e in parties}
+        self._parties_cache[client_id] = (mtime, parties, name_idx)
+        return parties, name_idx
+
     def list_parties(self, client_id: str) -> list[PartyEntry]:
-        raw = self._read_json(self._parties_path(client_id), [])
-        return [PartyEntry(**e) for e in raw]
+        return list(self._parties_indexed(client_id)[0])
 
     def lookup_party(self, client_id: str, name: str) -> Optional[PartyEntry]:
         key = normalize_key(name)
         if not key:
             return None
-        for e in self.list_parties(client_id):
-            if normalize_key(e.name) == key:
-                return e
-        return None
+        return self._parties_indexed(client_id)[1].get(key)
 
     def upsert_party(self, client_id: str, entry: PartyEntry) -> None:
         with self._lock:

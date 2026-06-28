@@ -36,6 +36,13 @@ from ui.auth import login_gate, logout_button
 
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
+# Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
+# widget change inside it re-renders only that block — not the whole app/engine.
+_fragment = getattr(st, "fragment", None) or getattr(st, "experimental_fragment", None)
+if _fragment is None:  # pragma: no cover - very old Streamlit fallback
+    def _fragment(func):
+        return func
+
 
 @st.cache_resource
 def get_store():
@@ -281,7 +288,20 @@ def _render_party_proposals(store, client, result, unknown_custs) -> None:
 
 def _party_grid(group: str, names, hints, store, client, default_approve: bool) -> None:
     """A table-like grid of per-row widgets so each row's LGA dropdown can be
-    narrowed to the state selected on that same row."""
+    narrowed to the state selected on that same row.
+
+    Wrapped in a fragment so picking a state re-renders only this grid — the
+    engine is NOT re-run on every dropdown change (that was the slowness).
+    """
+
+    @_fragment
+    def _grid() -> None:
+        _party_grid_body(group, names, hints, store, client, default_approve)
+
+    _grid()
+
+
+def _party_grid_body(group: str, names, hints, store, client, default_approve: bool) -> None:
     state_pairs = reference.states()
     state_opts = [""] + [f"{n} ({c})" for n, c in state_pairs]
     s_label2code = {f"{n} ({c})": c for n, c in state_pairs}
