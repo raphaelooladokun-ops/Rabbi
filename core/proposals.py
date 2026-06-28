@@ -16,6 +16,7 @@ from datetime import date
 from difflib import SequenceMatcher
 from typing import Iterable, Optional
 
+from . import reference
 from .masters import ItemEntry, PartyEntry
 
 # Default similarity at/above which we treat an unknown item as the SAME as an
@@ -193,13 +194,23 @@ def extract_tin(text: str) -> str:
 
 
 def derive_state_code(text: str) -> str:
-    """Map a state name appearing in address text to its NG-XX code; '' if none."""
+    """Map a state name appearing in address text to its NG-XX code; '' if none.
+
+    Uses the bundled Digitax state reference, falling back to a built-in map.
+    """
+    code = reference.state_code_from_text(text)
+    if code:
+        return code
     low = f" {_norm(text)} "
-    # Longer names first so 'cross river' wins over a stray 'river'.
     for name in sorted(NG_STATE_CODES, key=len, reverse=True):
         if f" {name} " in low:
             return NG_STATE_CODES[name]
     return ""
+
+
+def derive_lga(text: str, state_code: str = "") -> tuple[str, str]:
+    """Find an LGA in address text -> (NG-XX-XXX code, NG-XX state). Best-effort."""
+    return reference.lga_from_text(text, state_code)
 
 
 @dataclass
@@ -234,6 +245,9 @@ def propose_party(
     email = (email or "").strip()
     address = (address_text or "").strip()
     state = derive_state_code(address)
+    lga_code, lga_state = derive_lga(address, state)
+    if lga_state and not state:
+        state = lga_state  # back-fill the state from a matched LGA
 
     have_all = bool(tin and email and address)
     missing = [w for w, ok in (("TIN", tin), ("email", email), ("address", address)) if not ok]
@@ -241,7 +255,7 @@ def propose_party(
     return PartyProposal(
         name=name, can_be_b2b=have_all, tin=tin, email_address=email,
         street_name=address if have_all else "", city_name="", postal_zone="",
-        country="NGA", local_government="", state=state, reason=reason,
+        country="NGA", local_government=lga_code, state=state, reason=reason,
     )
 
 

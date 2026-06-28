@@ -108,10 +108,11 @@ proposes them for approval before anything is written:
 - **Parties** — a new **B2B** party is only created when the real details exist
   (**TIN + email + address**); TINs and emails are never fabricated. For
   Geeta/Goldcoin the TIN is read from the raw file's VAT No. column when
-  present. `state` (NG-XX) is derived from the address; **`local_government`
-  (NG-XX-XXX) needs the Digitax LGA code reference and is left editable, never
-  guessed**. Without the required details the customer stays **B2C** for the
-  run (flagged "could be B2B once details are obtained") and is not blocked.
+  present. `state` (NG-XX) and `local_government` (NG-XX-XXX) are derived from
+  the address using the bundled Digitax state/LGA reference when an LGA is
+  recognised, and left editable otherwise (never guessed). Without the required
+  details the customer stays **B2C** for the run (flagged "could be B2B once
+  details are obtained") and is not blocked.
 
 On approval the new items/parties are appended to the persistent masters and
 written to Digitax upload templates. **Staged output** then enforces order:
@@ -196,8 +197,11 @@ using synthetic Tally/SALES-LEDGER fixtures.
   columns/sheets) and a few sample raw exports per client to validate against.
 - The exact Digitax CSV header/format from a known-good file (the column list
   here follows the brief; confirm field order and date formatting match).
-- **The Digitax LGA code reference** (LGA name → `NG-XX-XXX`) so the new-party
-  flow can fill `local_government` automatically. Until then it's left editable.
+- **`invoice_type_code`** — the brief specifies `388`, but the Digitax
+  invoice-type reference labels `388` = "Statement of Account" and `381` =
+  "Commercial Invoice". It's left at `388` (per the brief) and is editable per
+  client under **Clients & settings**; confirm the correct code against a
+  known-good Digitax upload before going live.
 - Friendship TIN normalisation rule (e.g. appending a missing `-0001` suffix).
 - Whether the Goldcoin client has any B2B customers.
 - Hosting target and the persistent-storage arrangement.

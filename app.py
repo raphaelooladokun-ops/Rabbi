@@ -26,6 +26,7 @@ from core.output import (
 )
 from core.digitax_resources import TAX_CATEGORY_CODES
 from core.proposals import propose_items, propose_party, run_period
+from core.reference import invoice_type_label, is_valid_hsn, is_valid_service_code
 from core.readers import get_reader
 from core.store import get_master_store
 from ui.auth import login_gate, logout_button
@@ -218,12 +219,17 @@ def _render_item_proposals(store: MasterStore, client: ClientConfig, unknown_ite
                 "is_service": st.column_config.CheckboxColumn(),
             },
         )
+        st.caption("HSN codes are validated against the Digitax HSN reference; unknown ones are flagged but not blocked.")
         if st.button("Approve new items", key=f"approveitems_{_run_key()}"):
             created = _bucket("created_items")
-            missing_hsn = 0
+            missing_hsn = bad_hsn = 0
             for _, r in edited.iterrows():
-                if not str(r.get("hsn_code", "")).strip():
+                hsn = str(r.get("hsn_code", "")).strip()
+                is_svc = bool(r.get("is_service", False))
+                if not hsn:
                     missing_hsn += 1
+                elif not (is_valid_service_code(hsn) if is_svc else is_valid_hsn(hsn)):
+                    bad_hsn += 1
                 entry = ItemEntry(
                     name=str(r["name"]), item_code=str(r["item_code"]),
                     hsn_code=str(r.get("hsn_code", "")).strip(),
@@ -235,7 +241,9 @@ def _render_item_proposals(store: MasterStore, client: ClientConfig, unknown_ite
                 created[entry.name] = entry
             msg = f"Approved {len(edited)} new item(s)."
             if missing_hsn:
-                msg += f" ⚠️ {missing_hsn} still have a blank HSN code."
+                msg += f" ⚠️ {missing_hsn} have a blank HSN code."
+            if bad_hsn:
+                msg += f" ⚠️ {bad_hsn} HSN code(s) are not in the Digitax reference."
             st.success(msg)
             st.rerun()
 
@@ -332,12 +340,13 @@ def _render_staged_output(client: ClientConfig, result: ProcessResult) -> None:
         st.caption("New items/customers uploaded ✓ — their codes and TINs are already embedded below.")
 
     ready = result.ready_invoices
+    itc = client.invoice_type_code
     col1, col2 = st.columns(2)
     with col1:
         if ready:
             st.download_button(
                 f"⬇️ {slug}_invoices_{period}.csv  ({len(ready)} ready)",
-                data=write_csv_bytes(result.invoices, only_ready=True),
+                data=write_csv_bytes(result.invoices, only_ready=True, invoice_type_code=itc),
                 file_name=f"{slug}_invoices_{period}.csv", mime="text/csv", type="primary",
                 use_container_width=True,
             )
@@ -346,7 +355,7 @@ def _render_staged_output(client: ClientConfig, result: ProcessResult) -> None:
     with col2:
         st.download_button(
             f"⬇️ All invoices incl. flagged ({len(result.invoices)})",
-            data=write_csv_bytes(result.invoices, only_ready=False),
+            data=write_csv_bytes(result.invoices, only_ready=False, invoice_type_code=itc),
             file_name=f"{slug}_invoices_all_{period}.csv", mime="text/csv",
             use_container_width=True,
         )
@@ -561,11 +570,18 @@ def render_settings(store: MasterStore) -> None:
                     "TIN suffix normalisation rule (e.g. -0001; leave blank for none)",
                     value=c.tin_suffix_rule,
                 )
+                itc = st.text_input(
+                    "invoice_type_code (written to every row)", value=c.invoice_type_code,
+                    help="Digitax label for this code: " + (invoice_type_label(c.invoice_type_code) or "unknown"),
+                )
+                lbl = invoice_type_label(itc.strip())
+                if lbl:
+                    st.caption(f"`{itc.strip()}` = **{lbl}** per the Digitax invoice-type reference.")
                 notes = st.text_area("Notes", value=c.notes)
                 if st.form_submit_button("Save client"):
                     store.save_client(ClientConfig(
                         id=c.id, name=name, reader=reader, b2b_expected=b2b,
-                        tin_suffix_rule=tin_rule, notes=notes,
+                        tin_suffix_rule=tin_rule, invoice_type_code=itc.strip() or "388", notes=notes,
                     ))
                     st.success("Saved.")
                     st.rerun()

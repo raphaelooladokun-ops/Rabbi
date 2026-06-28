@@ -67,6 +67,10 @@ class ClientConfig:
     # Optional, operator-confirmed TIN normalisation rule for Reader B, e.g.
     # appending a missing branch suffix. Empty = no auto-normalisation.
     tin_suffix_rule: str = ""
+    # Digitax invoice_type_code written to every row. Defaults to the brief's
+    # "388"; confirm against the Digitax invoice-type reference / a known-good
+    # upload before going live (see the Clients & settings page).
+    invoice_type_code: str = "388"
     notes: str = ""
 
 

@@ -40,7 +40,7 @@ def _fmt_num(value: Optional[Decimal]) -> str:
     return format(d, "f")
 
 
-def _row_dict(iv: InvoiceSummary, line) -> dict[str, str]:
+def _row_dict(iv: InvoiceSummary, line, invoice_type_code: str = INVOICE_TYPE_CODE) -> dict[str, str]:
     party_tin = iv.party_tin if iv.invoice_kind == "B2B" else ""
     # Ready invoices always have a trader number. For the "all invoices"
     # export (which includes flagged ones) fall back to the truncated raw
@@ -48,7 +48,7 @@ def _row_dict(iv: InvoiceSummary, line) -> dict[str, str]:
     trader = iv.trader_invoice_number or iv.invoice_number_raw[:TRADER_INVOICE_NUMBER_MAX]
     return {
         "trader_invoice_number": trader,
-        "invoice_type_code": INVOICE_TYPE_CODE,
+        "invoice_type_code": invoice_type_code,
         "invoice_date": _fmt_date(iv.invoice_date),
         "issue_date": _fmt_date(iv.invoice_date),
         "issue_time": "",
@@ -74,7 +74,12 @@ def _row_dict(iv: InvoiceSummary, line) -> dict[str, str]:
     }
 
 
-def write_csv(invoices: Iterable[InvoiceSummary], *, only_ready: bool = True) -> str:
+def write_csv(
+    invoices: Iterable[InvoiceSummary],
+    *,
+    only_ready: bool = True,
+    invoice_type_code: str = INVOICE_TYPE_CODE,
+) -> str:
     """Render invoices to a Digitax CSV string."""
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=list(DIGITAX_COLUMNS), extrasaction="raise")
@@ -83,12 +88,17 @@ def write_csv(invoices: Iterable[InvoiceSummary], *, only_ready: bool = True) ->
         if only_ready and not iv.ready:
             continue
         for line in iv.lines:
-            writer.writerow(_row_dict(iv, line))
+            writer.writerow(_row_dict(iv, line, invoice_type_code))
     return buf.getvalue()
 
 
-def write_csv_bytes(invoices: Iterable[InvoiceSummary], *, only_ready: bool = True) -> bytes:
-    return write_csv(invoices, only_ready=only_ready).encode("utf-8")
+def write_csv_bytes(
+    invoices: Iterable[InvoiceSummary],
+    *,
+    only_ready: bool = True,
+    invoice_type_code: str = INVOICE_TYPE_CODE,
+) -> bytes:
+    return write_csv(invoices, only_ready=only_ready, invoice_type_code=invoice_type_code).encode("utf-8")
 
 
 # --- Exceptions report -----------------------------------------------------

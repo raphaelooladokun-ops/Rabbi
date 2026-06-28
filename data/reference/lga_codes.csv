@@ -1,0 +1,775 @@
+name,lga_code,state_code
+Ikeduru,NG-IM-IKE,NG-IM
+Warawa,NG-KN-WAR,NG-KN
+Edu,NG-KW-EDU,NG-KW
+Abeokuta North,NG-OG-ANO,NG-OG
+Ibadan Central,NG-OY-ICE,NG-OY
+Dange-shnsi,NG-SO-DSH,NG-SO
+Tambuwal,NG-SO-TAM,NG-SO
+Mkpat Enin,NG-AK-MEN,NG-AK
+Southern Ijaw,NG-BY-SIJ,NG-BY
+Magumeri,NG-BO-MAG,NG-BO
+Akamkpa,NG-CR-AKA,NG-CR
+Ihitte/Uboma,NG-IM-IHI,NG-IM
+Birnin-Gwari,NG-KD-BGW,NG-KD
+Bunkure,NG-KN-BUN,NG-KN
+Ofu,NG-KO-OFU,NG-KO
+Owan East,NG-ED-OEA,NG-ED
+Aboh-Mbaise,NG-IM-AMB,NG-IM
+Baruten,NG-KW-BAR,NG-KW
+Tarmua,NG-YO-TAR,NG-YO
+Ikono,NG-AK-IKO,NG-AK
+Orumba North,NG-AN-ON1,NG-AN
+Igbo-Etiti,NG-EN-IET,NG-EN
+Ngor-Okpala,NG-IM-NOK,NG-IM
+Oru West,NG-IM-OWE,NG-IM
+Kazaure,NG-JI-KAZ,NG-JI
+Ojo,NG-LA-OJO,NG-LA
+Nsit Ibom,NG-AK-NIB,NG-AK
+Dutse,NG-JI-DUT,NG-JI
+Miga,NG-JI-MIG,NG-JI
+Taura,NG-JI-TAU,NG-JI
+Madobi,NG-KN-MAD,NG-KN
+Kalgo,NG-KE-KAL,NG-KE
+Okehi,NG-KO-OKE,NG-KO
+Ilorin East,NG-KW-IEA,NG-KW
+Ikwuano,NG-AB-IKW,NG-AB
+Biu,NG-BO-BIU,NG-BO
+Calabar-Municipal,NG-CR-CMU,NG-CR
+Garum Mallam,NG-KN-GMA,NG-KN
+Akoko South West,NG-ON-ASW,NG-ON
+Ondo West,NG-ON-OWE,NG-ON
+Ahoada East,NG-RI-AEA,NG-RI
+Etche,NG-RI-ETC,NG-RI
+Gwiwa,NG-JI-GWI,NG-JI
+Batsari,NG-KT-BA1,NG-KT
+Kaiama,NG-KW-KAI,NG-KW
+Mashegu,NG-NI-MAS,NG-NI
+Boluwaduro,NG-OS-BOL,NG-OS
+Balanga,NG-GO-BAL,NG-GO
+Giwa,NG-KD-GIW,NG-KD
+Ogbia,NG-BY-OGB,NG-BY
+Dambatta,NG-KN-DAM,NG-KN
+Argungu,NG-KE-ARG,NG-KE
+Saki East,NG-OY-SEA,NG-OY
+Binji,NG-SO-BIN,NG-SO
+Tafa,NG-NI-TAF,NG-NI
+Ifo,NG-OG-IFO,NG-OG
+Isiala-Ngwa North,NG-AB-INN,NG-AB
+Afikpo South,NG-EB-ASO,NG-EB
+Akko,NG-GO-AKK,NG-GO
+Ewekoro,NG-OG-EWE,NG-OG
+Demsa,NG-AD-DEM,NG-AD
+Ibeno,NG-AK-IBE,NG-AK
+kudan,NG-KD-KUD,NG-KD
+Eti-Osa,NG-LA-EOS,NG-LA
+Oshodi-Isolo,NG-LA-OIS,NG-LA
+Lafia,NG-NA-LAF,NG-NA
+Ondo East,NG-ON-OEA,NG-ON
+Yabo,NG-SO-YAB,NG-SO
+Bekwara,NG-CR-BEK,NG-CR
+Aniocha South,NG-DE-ASO,NG-DE
+Kano Municipal,NG-KN-KMU,NG-KN
+Omala,NG-KO-OMA,NG-KO
+Itesiwaju,NG-OY-ITE,NG-OY
+Ganjuwa,NG-BA-GAN,NG-BA
+Kafin Hausa,NG-JI-KHA,NG-JI
+Kabba/Bunu,NG-KO-KAB,NG-KO
+Langtang North,NG-PL-LNO,NG-PL
+Illela,NG-SO-ILL,NG-SO
+Jada,NG-AD-JAD,NG-AD
+Nnewi North,NG-AN-NNO,NG-AN
+Takali,NG-KN-TAK,NG-KN
+Lavun,NG-NI-LAV,NG-NI
+Qua'an Pan,NG-PL-QPA,NG-PL
+Isiala-Ngwa South,NG-AB-INS,NG-AB
+Obot Akara,NG-AK-OAK,NG-AK
+Ukanafun,NG-AK-UKA,NG-AK
+Fagge,NG-KN-FAG,NG-KN
+Borgu,NG-NI-BOR,NG-NI
+Ogu/Bolo,NG-RI-OGU,NG-RI
+Guzamala,NG-BO-GUZ,NG-BO
+Efon,NG-EK-EFO,NG-EK
+Jahun,NG-JI-JAH,NG-JI
+Kagarko,NG-KD-KAG,NG-KD
+Ifelodun,NG-KW-IFE,NG-KW
+Epe,NG-LA-EPE,NG-LA
+Kanam,NG-PL-KAN,NG-PL
+Gudu,NG-SO-GUD,NG-SO
+Eastern Obolo,NG-AK-EOB,NG-AK
+Izzi,NG-EB-IZZ,NG-EB
+Oji-River,NG-EN-ORI,NG-EN
+Odogbolu,NG-OG-ODO,NG-OG
+Ardo-kola,NG-TA-AKO,NG-TA
+Itas/Gadau,NG-BA-ITA,NG-BA
+Chibok,NG-BO-CHI,NG-BO
+Ughelli South,NG-DE-USO,NG-DE
+Ogbomosho North,NG-OY-ONO,NG-OY
+Shendam,NG-PL-SHE,NG-PL
+Biase,NG-CR-BIA,NG-CR
+Ikom,NG-CR-IKO,NG-CR
+kaduna South,NG-KD-KSO,NG-KD
+Kura,NG-KN-KUR,NG-KN
+Batagarawa,NG-KT-BAT,NG-KT
+Apapa,NG-LA-APA,NG-LA
+Saki West,NG-OY-SWE,NG-OY
+Mangu,NG-PL-MAN,NG-PL
+Isoko South,NG-DE-IS1,NG-DE
+Ivo,NG-EB-IVO,NG-EB
+Ekiti East,NG-EK-EEA,NG-EK
+Maiyama,NG-KE-MAI,NG-KE
+Sabon birni,NG-SO-SBI,NG-SO
+Zaki,NG-BA-ZAK,NG-BA
+Bagwai,NG-KN-BAG,NG-KN
+Bassa,NG-KO-BAS,NG-KO
+Rafi,NG-NI-RAF,NG-NI
+Ussa,NG-TA-USS,NG-TA
+Brass,NG-BY-BRA,NG-BY
+Awe,NG-NA-AWE,NG-NA
+Langtang South,NG-PL-LSO,NG-PL
+Karasuwa,NG-YO-KAR,NG-YO
+Alkaleri,NG-BA-ALK,NG-BA
+Ikpoba-Okha,NG-ED-IOK,NG-ED
+Owerri-Municipal,NG-IM-OMU,NG-IM
+Gezawa,NG-KN-GEZ,NG-KN
+Dandume,NG-KT-DAN,NG-KT
+Adavi,NG-KO-ADA,NG-KO
+Dekina,NG-KO-DEK,NG-KO
+Ijebu East,NG-OG-IEA,NG-OG
+Ugwunagbo,NG-AB-UGW,NG-AB
+Mafa,NG-BO-MAF,NG-BO
+Rogo,NG-KN-ROG,NG-KN
+Bade,NG-YO-BAD,NG-YO
+Anka,NG-ZA-ANK,NG-ZA
+Bukkuyum,NG-ZA-BUK,NG-ZA
+Ikole,NG-EK-IKO,NG-EK
+Chikun,NG-KD-CHI,NG-KD
+Kiru,NG-KN-KIR,NG-KN
+Keana,NG-NA-KEA,NG-NA
+Gurara,NG-NI-GUR,NG-NI
+Ikenne,NG-OG-IKE,NG-OG
+Atigbo,NG-OY-AT1,NG-OY
+Ogbadibo,NG-BE-OGB,NG-BE
+Odukpani,NG-CR-ODU,NG-CR
+Ezeagu,NG-EN-EZE,NG-EN
+Igbo-Eze North,NG-EN-IEN,NG-EN
+Garki,NG-JI-GAR,NG-JI
+Lere,NG-KD-LER,NG-KD
+Nasarawa-Eggon,NG-NA-NEG,NG-NA
+Goronyo,NG-SO-GOR,NG-SO
+Dawakin Tofa,NG-KN-DTO,NG-KN
+Akure North,NG-ON-ANO,NG-ON
+Sokoto North,NG-SO-SNO,NG-SO
+Esan West,NG-ED-EWE,NG-ED
+Ife East,NG-OS-IEA,NG-OS
+Asari-Toru,NG-RI-AT1,NG-RI
+Bakassi,NG-CR-BAK,NG-CR
+Kaura LGA,NG-KD-KLG,NG-KD
+Gwandu,NG-KE-GWA,NG-KE
+Ado,NG-BE-ADO,NG-BE
+Kwali LGA,NG-FC-KL1,NG-FC
+Obowo,NG-IM-OBO,NG-IM
+Bebeji,NG-KN-BEB,NG-KN
+Ingawa,NG-KT-ING,NG-KT
+Ikeja,NG-LA-IKE,NG-LA
+Bokkos,NG-PL-BOK,NG-PL
+Pankshin,NG-PL-PAN,NG-PL
+Mayo-Belwa,NG-AD-MBE,NG-AD
+Irepodun/Ifelodun,NG-EK-IRE,NG-EK
+Isiala Mbano,NG-IM-IMB,NG-IM
+Nwangele,NG-IM-NWA,NG-IM
+Lagos Island,NG-LA-LIS,NG-LA
+Ahoada West,NG-RI-AWE,NG-RI
+Sabon-Gari,NG-KD-SGA,NG-KD
+Bindawa,NG-KT-BIN,NG-KT
+Mani,NG-KT-MAN,NG-KT
+Igalamela-Odolu,NG-KO-IOD,NG-KO
+Bali,NG-TA-BAL,NG-TA
+Anaocha,NG-AN-ANA,NG-AN
+Awka North,NG-AN-ANO,NG-AN
+Sagbama,NG-BY-SAG,NG-BY
+Warri South,NG-DE-WSO,NG-DE
+Surulere,NG-LA-SUR,NG-LA
+Atakumosa West,NG-OS-AWE,NG-OS
+Jakusko,NG-YO-JAK,NG-YO
+Akpabuyo,NG-CR-AKP,NG-CR
+Nafada,NG-GO-NAF,NG-GO
+Nasarawa,NG-KN-NAS,NG-KN
+Irepo,NG-OY-IRE,NG-OY
+Sokoto South,NG-SO-SSO,NG-SO
+Aguata,NG-AN-AGU,NG-AN
+Nsukka,NG-EN-NSU,NG-EN
+Abuja Municipa LGA,NG-FC-AML,NG-FC
+Ahiazu-Mbaise,NG-IM-AM1,NG-IM
+Zaria,NG-KD-ZAR,NG-KD
+Kogi,NG-KO-KOG,NG-KO
+Irepodun,NG-OS-IRE,NG-OS
+Kanke,NG-PL-KA1,NG-PL
+Ningi,NG-BA-NIN,NG-BA
+Ezza North,NG-EB-ENO,NG-EB
+Esan Central,NG-ED-ECE,NG-ED
+Tsanyawa,NG-KN-TSA,NG-KN
+Bagudo,NG-KE-BAG,NG-KE
+Maradun,NG-ZA-MAR,NG-ZA
+Umuahia North,NG-AB-UNO,NG-AB
+Billiri,NG-GO-BIL,NG-GO
+Gaya,NG-KN-GAY,NG-KN
+Imeko-Afon,NG-OG-IAF,NG-OG
+Bodinga,NG-SO-BOD,NG-SO
+Shagari,NG-SO-SHA,NG-SO
+Uvwie,NG-DE-UVW,NG-DE
+Dukku,NG-GO-DUK,NG-GO
+Roni,NG-JI-RON,NG-JI
+Sule-Tankarkar,NG-JI-STA,NG-JI
+Obi,NG-NA-OBI,NG-NA
+Akoko South Akure East,NG-ON-ASA,NG-ON
+Takum,NG-TA-TAK,NG-TA
+Zing,NG-TA-ZIN,NG-TA
+Katsina-Ala,NG-BE-KAL,NG-BE
+Marte,NG-BO-MAR,NG-BO
+Osogbo,NG-OS-OSO,NG-OS
+Rabah,NG-SO-RAB,NG-SO
+Fika,NG-YO-FIK,NG-YO
+Abak,NG-AK-ABA,NG-AK
+Patani,NG-DE-PAT,NG-DE
+Ekiti West,NG-EK-EWE,NG-EK
+Katagum,NG-BA-KAT,NG-BA
+Ezinihitte,NG-IM-EZI,NG-IM
+Bende,NG-AB-BEN,NG-AB
+Ukwa East,NG-AB-UEA,NG-AB
+Umuahia South,NG-AB-USO,NG-AB
+Itu,NG-AK-ITU,NG-AK
+Ikere,NG-EK-IKE,NG-EK
+Biriniwa,NG-JI-BIR,NG-JI
+Tofa,NG-KN-TOF,NG-KN
+Gusau,NG-ZA-GUS,NG-ZA
+Ibiono Ibom,NG-AK-IIB,NG-AK
+Gwer West,NG-BE-GWE,NG-BE
+Ndokwa West,NG-DE-NWE,NG-DE
+Zango-Kataf,NG-KD-ZKA,NG-KD
+Tudun Wada,NG-KN-TWA,NG-KN
+Birnin Kebbi,NG-KE-BKE,NG-KE
+Yagba West,NG-KO-YWE,NG-KO
+Pategi,NG-KW-PAT,NG-KW
+Toro,NG-BA-TOR,NG-BA
+Kukawa,NG-BO-KUK,NG-BO
+Mariga,NG-NI-MAR,NG-NI
+Jos South,NG-PL-JSO,NG-PL
+Birni Kudu,NG-JI-BKU,NG-JI
+Baure,NG-KT-BAU,NG-KT
+Kafur,NG-KT-KAF,NG-KT
+Kankara,NG-KT-KAN,NG-KT
+Jos North,NG-PL-JNO,NG-PL
+Anambra East,NG-AN-AEA,NG-AN
+Kolokuma/Opokuma,NG-BY-KOL,NG-BY
+Irele,NG-ON-IRE,NG-ON
+Wukari,NG-TA-WUK,NG-TA
+Shira,NG-BA-SHI,NG-BA
+Gombe,NG-GO-GOM,NG-GO
+Gwaram,NG-JI-GWA,NG-JI
+Charanchi,NG-KT-CHA,NG-KT
+Jibia,NG-KT-JIB,NG-KT
+Tai,NG-RI-TAI,NG-RI
+Darazo,NG-BA-DAR,NG-BA
+Jama'are,NG-BA-JAM,NG-BA
+Ika South,NG-DE-ISO,NG-DE
+Buji,NG-JI-BUJ,NG-JI
+Musawa,NG-KT-MUS,NG-KT
+Lokoja,NG-KO-LOK,NG-KO
+Wushishi,NG-NI-WUS,NG-NI
+Karin-Lamido,NG-TA-KLA,NG-TA
+Ikot Ekpene,NG-AK-IEK,NG-AK
+Nganzai,NG-BO-NG1,NG-BO
+Okpe,NG-DE-OKP,NG-DE
+Emure,NG-EK-EMU,NG-EK
+Danja,NG-KT-DA1,NG-KT
+Shanga,NG-KE-SHA,NG-KE
+Ogori/Mangongo,NG-KO-OGO,NG-KO
+Suleja,NG-NI-SUL,NG-NI
+Rano,NG-KN-RAN,NG-KN
+Dan Musa,NG-KT-DMU,NG-KT
+Ilesha East,NG-OS-IE1,NG-OS
+Mikang,NG-PL-MIK,NG-PL
+Hong,NG-AD-HON,NG-AD
+Ethiope East,NG-DE-EEA,NG-DE
+Udu,NG-DE-UDU,NG-DE
+Kajuru,NG-KD-KAJ,NG-KD
+kauru,NG-KD-KAU,NG-KD
+Odeda,NG-OG-ODE,NG-OG
+Maru,NG-ZA-MA1,NG-ZA
+Uzo-Uwani,NG-EN-UUW,NG-EN
+Doguwa,NG-KN-DOG,NG-KN
+Ajaokuta,NG-KO-AJA,NG-KO
+Toto,NG-NA-TOT,NG-NA
+Shiroro,NG-NI-SHI,NG-NI
+OriIre,NG-OY-ORI,NG-OY
+Kware,NG-SO-KWA,NG-SO
+Gwer East,NG-BE-GEA,NG-BE
+Owerri North,NG-IM-ONO,NG-IM
+Kankia,NG-KT-KA1,NG-KT
+Pailoro,NG-NI-PAI,NG-NI
+Ijebu Ode,NG-OG-IOD,NG-OG
+Gawabawa,NG-SO-GAW,NG-SO
+Jalingo,NG-TA-JAL,NG-TA
+Uyo,NG-AK-UYO,NG-AK
+Tarka,NG-BE-TAR,NG-BE
+Ushongo,NG-BE-USH,NG-BE
+Hawul,NG-BO-HAW,NG-BO
+Yakurr,NG-CR-YAK,NG-CR
+Oredo,NG-ED-ORE,NG-ED
+Owan West,NG-ED-OWE,NG-ED
+Dawakin Kudu,NG-KN-DKU,NG-KN
+Guyuk,NG-AD-GUY,NG-AD
+Mubi North,NG-AD-MNO,NG-AD
+Warri North,NG-DE-WNO,NG-DE
+Ohaukwu,NG-EB-OH1,NG-EB
+Shomgom,NG-GO-SHO,NG-GO
+Jega,NG-KE-JEG,NG-KE
+Offa,NG-KW-OFF,NG-KW
+Odo-Otin,NG-OS-OOT,NG-OS
+Gireri,NG-AD-GIR,NG-AD
+Jere,NG-BO-JER,NG-BO
+Ovia South West,NG-ED-OSW,NG-ED
+Albasu,NG-KN-ALB,NG-KN
+Irepodun,NG-KW-IRE,NG-KW
+Oyun,NG-KW-OYU,NG-KW
+Ikorodu,NG-LA-IKO,NG-LA
+Afijio,NG-OY-AFI,NG-OY
+Buruku,NG-BE-BUR,NG-BE
+Makurdi,NG-BE-MAK,NG-BE
+Etung,NG-CR-ETU,NG-CR
+Ungogo,NG-KN-UNG,NG-KN
+Mbo,NG-AK-MBO,NG-AK
+AdoEkiti,NG-EK-ADO,NG-EK
+Magama,NG-NI-MAG,NG-NI
+Muya,NG-NI-MUY,NG-NI
+Tureta,NG-SO-TUR,NG-SO
+Gummi,NG-ZA-GUM,NG-ZA
+Kaura Namoda,NG-ZA-KNA,NG-ZA
+Okobo,NG-AK-OKO,NG-AK
+Minjibir,NG-KN-MIN,NG-KN
+Badagry,NG-LA-BAD,NG-LA
+Irewole,NG-OS-IR1,NG-OS
+Emohua,NG-RI-EMO,NG-RI
+Nguru Potiskum,NG-YO-NPO,NG-YO
+Bauchi,NG-BA-BAU,NG-BA
+Uhunmwonde,NG-ED-UHU,NG-ED
+Idosi-Osi,NG-EK-IOS,NG-EK
+Maigatari,NG-JI-MAI,NG-JI
+Kunchi,NG-KN-KUN,NG-KN
+Lagelu,NG-OY-LAG,NG-OY
+Song,NG-AD-SON,NG-AD
+Yenegoa,NG-BY-YEN,NG-BY
+Calabar South,NG-CR-CSO,NG-CR
+Ilorin South LGA,NG-KW-ISL,NG-KW
+Akinyele,NG-OY-AKI,NG-OY
+Tqngaza,NG-SO-TQN,NG-SO
+Sardauna,NG-TA-SAR,NG-TA
+Misau,NG-BA-MIS,NG-BA
+Awgu,NG-EN-AWG,NG-EN
+Oke-Ero,NG-KW-OER,NG-KW
+Ajeromi-Ifelodun,NG-LA-AIF,NG-LA
+Lagos Mainland,NG-LA-LMA,NG-LA
+Wase,NG-PL-WAS,NG-PL
+Ibesikpo Asutan,NG-AK-IAS,NG-AK
+Ihiala,NG-AN-IHI,NG-AN
+Nkwerre,NG-IM-NKW,NG-IM
+Ikara,NG-KD-IKA,NG-KD
+Markafi,NG-KD-MAR,NG-KD
+Koko/Besse,NG-KE-KOK,NG-KE
+Keffi,NG-NA-KEF,NG-NA
+Nasarawa,NG-NA-NAS,NG-NA
+Aba North,NG-AB-ANO,NG-AB
+Maiha,NG-AD-MAI,NG-AD
+Idemili south,NG-AN-ISO,NG-AN
+Nembe,NG-BY-NEM,NG-BY
+Warri South West,NG-DE-WSW,NG-DE
+Ijebu North East,NG-OG-INE,NG-OG
+Ife Central,NG-OS-ICE,NG-OS
+Ikwerre,NG-RI-IKW,NG-RI
+Guma,NG-BE-GUM,NG-BE
+Egor,NG-ED-EGO,NG-ED
+Ajingi,NG-KN-AJI,NG-KN
+Amuwo-Odofin,NG-LA-AOD,NG-LA
+Bassa,NG-PL-BA1,NG-PL
+Omumma,NG-RI-OMU,NG-RI
+Bakura,NG-ZA-BAK,NG-ZA
+Birnin Magaji,NG-ZA-BMA,NG-ZA
+Lamurde,NG-AD-LAM,NG-AD
+Onicha,NG-EB-ONI,NG-EB
+Bosso,NG-NI-BOS,NG-NI
+Ese-Odo,NG-ON-EOD,NG-ON
+Logo,NG-BE-LOG,NG-BE
+Gagarawa,NG-JI-GAG,NG-JI
+Kaugama,NG-JI-KAU,NG-JI
+Bakori,NG-KT-BAK,NG-KT
+Sakaba,NG-KE-SAK,NG-KE
+Bonny,NG-RI-BON,NG-RI
+Kurmi,NG-TA-KUR,NG-TA
+Ishielu,NG-EB-ISH,NG-EB
+Etsako West,NG-ED-EW1,NG-ED
+Ede South,NG-OS-ESO,NG-OS
+Bursari,NG-YO-BUR,NG-YO
+Ohaozara,NG-EB-OHA,NG-EB
+Asa,NG-KW-ASA,NG-KW
+Doma,NG-NA-DOM,NG-NA
+Shagamu,NG-OG-SHA,NG-OG
+OgoOluwa,NG-OY-OGO,NG-OY
+Ogba/Egbema/Ndoni,NG-RI-OGB,NG-RI
+Akoko-Edo,NG-ED-AED,NG-ED
+Daura,NG-KT-DAU,NG-KT
+Ezza South,NG-EB-ESO,NG-EB
+Udi,NG-EN-UDI,NG-EN
+Gwagwalada LGA,NG-FC-GLG,NG-FC
+Funakaye,NG-GO-FUN,NG-GO
+Funtua,NG-KT-FUN,NG-KT
+Mai'Adua,NG-KT-MAI,NG-KT
+Idah,NG-KO-IDA,NG-KO
+Bogoro,NG-BA-BOG,NG-BA
+Konduga,NG-BO-KON,NG-BO
+Bida,NG-NI-BID,NG-NI
+Egbedore,NG-OS-EGB,NG-OS
+Oriade,NG-OS-ORI,NG-OS
+Ibarapa Central,NG-OY-IC1,NG-OY
+Ogbmosho South,NG-OY-OSO,NG-OY
+Surulere,NG-OY-SUR,NG-OY
+Kuje LGA,NG-FC-KLG,NG-FC
+Dutsi,NG-KT-DUT,NG-KT
+Ifako-Ijaye,NG-LA-IIJ,NG-LA
+Kosofe,NG-LA-KOS,NG-LA
+Oyo West,NG-OY-OWE,NG-OY
+Wamako,NG-SO-WAM,NG-SO
+Etim Ekpo,NG-AK-EE1,NG-AK
+Ukwuani,NG-DE-UKW,NG-DE
+Katsina,NG-KT-KAT,NG-KT
+Okitipupa,NG-ON-OKI,NG-ON
+Ibarapa East,NG-OY-IEA,NG-OY
+Ika,NG-AK-IKA,NG-AK
+Udenu,NG-EN-UDE,NG-EN
+Karaye,NG-KN-KAR,NG-KN
+Zango,NG-KT-ZAN,NG-KT
+Okpokwu,NG-BE-OKP,NG-BE
+Abaji LGA,NG-FC-ALG,NG-FC
+Gwale,NG-KN-GWA,NG-KN
+Khana,NG-RI-KHA,NG-RI
+Ikot Abasi,NG-AK-IAB,NG-AK
+Ikwo,NG-EB-IKW,NG-EB
+Esan North East,NG-ED-ENE,NG-ED
+Etsako East,NG-ED-EEA,NG-ED
+Egbeda,NG-OY-EGB,NG-OY
+Karawa,NG-YO-KA1,NG-YO
+Ganaye,NG-AD-GAN,NG-AD
+Abi,NG-CR-ABI,NG-CR
+Remo North,NG-OG-RNO,NG-OG
+Ona-Ara,NG-OY-OAR,NG-OY
+Gokana,NG-RI-GOK,NG-RI
+Abadam,NG-BO-ABA,NG-BO
+Obudu,NG-CR-OB1,NG-CR
+Ughelli North,NG-DE-UNO,NG-DE
+Ovia North East,NG-ED-ONE,NG-ED
+Njaba,NG-IM-NJA,NG-IM
+kumbotso,NG-KN-KUM,NG-KN
+Okene,NG-KO-OK1,NG-KO
+Ibi,NG-TA-IBI,NG-TA
+Vandeikya,NG-BE-VAN,NG-BE
+Shani,NG-BO-SHA,NG-BO
+Ethiope West,NG-DE-EWE,NG-DE
+Unuimo,NG-IM-UNU,NG-IM
+Rimin Gado,NG-KN-RGA,NG-KN
+Akure South,NG-ON-ASO,NG-ON
+Lau,NG-TA-LAU,NG-TA
+Njikoka,NG-AN-NJI,NG-AN
+Owerri West,NG-IM-OW1,NG-IM
+Mushin,NG-LA-MUS,NG-LA
+Gada,NG-SO-GAD,NG-SO
+Yola South,NG-AD-YSO,NG-AD
+Dikwa,NG-BO-DIK,NG-BO
+Orlu,NG-IM-ORL,NG-IM
+Iwajowa,NG-OY-IWA,NG-OY
+Talata Mafara,NG-ZA-TMA,NG-ZA
+Madagali,NG-AD-MAD,NG-AD
+Oguta,NG-IM-OGU,NG-IM
+Ringim,NG-JI-RIN,NG-JI
+Rimi,NG-KT-RIM,NG-KT
+Karu,NG-NA-KAR,NG-NA
+Udung Uko,NG-AK-UUK,NG-AK
+Ankpa,NG-KO-ANK,NG-KO
+Atakumosa East,NG-OS-AEA,NG-OS
+Obia/Akpor,NG-RI-OBI,NG-RI
+Oruk Anam,NG-AK-OAN,NG-AK
+Orumba South,NG-AN-OS1,NG-AN
+Obi,NG-BE-OBI,NG-BE
+Ukum,NG-BE-UKU,NG-BE
+Igueben,NG-ED-IGU,NG-ED
+Aiyekire,NG-EK-AIY,NG-EK
+Kwaya Kusar,NG-BO-KKU,NG-BO
+Yamaltu/Deba,NG-GO-YAM,NG-GO
+Dala,NG-KN-DAL,NG-KN
+Mopa-Muro,NG-KO-MMU,NG-KO
+Isin,NG-KW-ISI,NG-KW
+Bungudu,NG-ZA-BUN,NG-ZA
+Ogoja,NG-CR-OGO,NG-CR
+Jema'a,NG-KD-JEM,NG-KD
+Kurfi,NG-KT-KUR,NG-KT
+Ogun Waterside,NG-OG-OWA,NG-OG
+Isokan,NG-OS-IS1,NG-OS
+Kajola,NG-OY-KAJ,NG-OY
+Machina,NG-YO-MAC,NG-YO
+Ekwusigo,NG-AN-EKW,NG-AN
+Onitsha South,NG-AN-OSO,NG-AN
+Gwoza,NG-BO-GWO,NG-BO
+Ekiti South West,NG-EK-ESW,NG-EK
+Kaltungo,NG-GO-KAL,NG-GO
+Kaita,NG-KT-KAI,NG-KT
+Safana,NG-KT-SAF,NG-KT
+Donga,NG-TA-DON,NG-TA
+Idemili North,NG-AN-INO,NG-AN
+Warji,NG-BA-WAR,NG-BA
+Agatu,NG-BE-AGA,NG-BE
+Konshisha,NG-BE-KON,NG-BE
+Bayo,NG-BO-BAY,NG-BO
+Babura,NG-JI-BAB,NG-JI
+Zuru,NG-KE-ZUR,NG-KE
+Odigbo,NG-ON-ODI,NG-ON
+Ukwa West,NG-AB-UWE,NG-AB
+Esit Eket,NG-AK-EEK,NG-AK
+Ilemeji,NG-EK-ILE,NG-EK
+Fakai,NG-KE-FAK,NG-KE
+Kontagora,NG-NI-KON,NG-NI
+Ife South,NG-OS-ISO,NG-OS
+Ila,NG-OS-ILA,NG-OS
+Olorunda,NG-OS-OLO,NG-OS
+Oju,NG-BE-OJU,NG-BE
+Ndokwa East,NG-DE-NEA,NG-DE
+Nkanu East,NG-EN-NEA,NG-EN
+Alimosho,NG-LA-ALI,NG-LA
+Akwanga,NG-NA-AKW,NG-NA
+Ipokia,NG-OG-IPO,NG-OG
+Ede North,NG-OS-ENO,NG-OS
+Barikin Ladi,NG-PL-BLA,NG-PL
+Aba South,NG-AB-ASO,NG-AB
+Ohafia,NG-AB-OHA,NG-AB
+Askira/Uba,NG-BO-ASK,NG-BO
+Ijero,NG-EK-IJE,NG-EK
+Oye,NG-EK-OYE,NG-EK
+Abua/Odual,NG-RI-ABU,NG-RI
+Port-Harcourt,NG-RI-PHA,NG-RI
+Geidam,NG-YO-GEI,NG-YO
+Okigwe,NG-IM-OKI,NG-IM
+Sanga,NG-KD-SAN,NG-KD
+Bichi,NG-KN-BIC,NG-KN
+Sandamu,NG-KT-SAN,NG-KT
+Ekiti,NG-KW-EKI,NG-KW
+Lapai,NG-NI-LAP,NG-NI
+Yunusari,NG-YO-YUN,NG-YO
+Orsu,NG-IM-ORS,NG-IM
+Ose,NG-ON-OSE,NG-ON
+Orolu,NG-OS-ORO,NG-OS
+Isa,NG-SO-ISA,NG-SO
+Gujba,NG-YO-GUJ,NG-YO
+Zurmi,NG-ZA-ZUR,NG-ZA
+Aniocha North,NG-DE-ANO,NG-DE
+Burutu,NG-DE-BUR,NG-DE
+Olamabolo,NG-KO-OLA,NG-KO
+Akoko North East,NG-ON-ANE,NG-ON
+Ola-Oluwa,NG-OS-OOL,NG-OS
+Ibadan North West,NG-OY-INW,NG-OY
+Gombi,NG-AD-GOM,NG-AD
+Uruan,NG-AK-URU,NG-AK
+Bama,NG-BO-BAM,NG-BO
+Matazuu,NG-KT-MAT,NG-KT
+Yorro,NG-TA-YOR,NG-TA
+Mubi South,NG-AD-MSO,NG-AD
+Giade,NG-BA-GIA,NG-BA
+Bwari LGA,NG-FC-BLG,NG-FC
+Auyo,NG-JI-AUY,NG-JI
+Hadejia,NG-JI-HAD,NG-JI
+Wamba,NG-NA-WAM,NG-NA
+Ife North,NG-OS-INO,NG-OS
+Ifedayo,NG-OS-IFE,NG-OS
+Toungo,NG-AD-TOU,NG-AD
+Nnewi South,NG-AN-NSO,NG-AN
+Isoko North,NG-DE-INO,NG-DE
+Enugu East,NG-EN-EEA,NG-EN
+Mokwa,NG-NI-MOK,NG-NI
+Damaturu,NG-YO-DAM,NG-YO
+Fune,NG-YO-FUN,NG-YO
+Gulani,NG-YO-GUL,NG-YO
+Ohimini,NG-BE-OHI,NG-BE
+Ika North East,NG-DE-INE,NG-DE
+Enugu North,NG-EN-ENO,NG-EN
+Boripe,NG-OS-BOR,NG-OS
+Atiba,NG-OY-ATI,NG-OY
+Silame,NG-SO-SIL,NG-SO
+Isuikwato,NG-AB-ISU,NG-AB
+Ekeremor,NG-BY-EKE,NG-BY
+Isu,NG-IM-ISU,NG-IM
+Dutsin-Ma,NG-KT-DMA,NG-KT
+Agege,NG-LA-AGE,NG-LA
+Agwara,NG-NI-AGW,NG-NI
+Akoko North West,NG-ON-ANW,NG-ON
+Ilaje,NG-ON-ILA,NG-ON
+Obi Nwa,NG-AB-ONW,NG-AB
+Fufore,NG-AD-FUF,NG-AD
+Yola North,NG-AD-YNO,NG-AD
+Nsit Atai,NG-AK-NAT,NG-AK
+Damban,NG-BA-DAM,NG-BA
+Ngala,NG-BO-NGA,NG-BO
+Boki,NG-CR-BOK,NG-CR
+Egbado North,NG-OG-ENO,NG-OG
+Ideato North,NG-IM-INO,NG-IM
+Yauri,NG-KE-YAU,NG-KE
+Ado-Odo/Ota,NG-OG-AOD,NG-OG
+Ifedore,NG-ON-IFE,NG-ON
+Ejigbo,NG-OS-EJI,NG-OS
+Ifelodun,NG-OS-IF1,NG-OS
+Anambra West,NG-AN-AWE,NG-AN
+Bunza,NG-KE-BUN,NG-KE
+Abeokuta South,NG-OG-ASO,NG-OG
+Okrika,NG-RI-OKR,NG-RI
+Awka South,NG-AN-ASO,NG-AN
+Rijau,NG-NI-RIJ,NG-NI
+Riyom,NG-PL-RIY,NG-PL
+Opobo/Nkoro,NG-RI-OPO,NG-RI
+Wurno,NG-SO-WUR,NG-SO
+Michika,NG-AD-MIC,NG-AD
+Shelleng,NG-AD-SHE,NG-AD
+Maiduguri,NG-BO-MAI,NG-BO
+Ideato South,NG-IM-ISO,NG-IM
+Mbaitoli,NG-IM-MBA,NG-IM
+Kiri Kasamma,NG-JI-KKA,NG-JI
+Kibiya,NG-KN-KIB,NG-KN
+Ibeju/Lekki,NG-LA-IBE,NG-LA
+Oturkpo,NG-BE-OTU,NG-BE
+Shanono,NG-KN-SHA,NG-KN
+Yagba East,NG-KO-YEA,NG-KO
+Katcha,NG-NI-KAT,NG-NI
+Ilesha West,NG-OS-IWE,NG-OS
+Obokun,NG-OS-OBO,NG-OS
+Olorunsogo,NG-OY-OLO,NG-OY
+Arochukwu,NG-AB-ARO,NG-AB
+Essien Udim,NG-AK-EUD,NG-AK
+Ini,NG-AK-INI,NG-AK
+Etsako Central,NG-ED-EC1,NG-ED
+Augie,NG-KE-AUG,NG-KE
+Ibaji,NG-KO-IBA,NG-KO
+Ilorin West,NG-KW-IWE,NG-KW
+Moro,NG-KW-MOR,NG-KW
+Ogbaru,NG-AN-OGB,NG-AN
+Apa,NG-BE-APA,NG-BE
+Kubau,NG-KD-KUB,NG-KD
+Kabo,NG-KN-KAB,NG-KN
+Sumaila,NG-KN-SUM,NG-KN
+Tarauni,NG-KN-TAR,NG-KN
+Shomolu,NG-LA-SHO,NG-LA
+Aiyedade,NG-OS-AIY,NG-OS
+Oshimili South,NG-DE-OSO,NG-DE
+Ebonyi,NG-EB-EBO,NG-EB
+Gumel,NG-JI-GUM,NG-JI
+Malam Madori,NG-JI-MMA,NG-JI
+Igabi,NG-KD-IGA,NG-KD
+Gwarzo,NG-KN-GW1,NG-KN
+Ile-Oluji-Okeigbo,NG-ON-IOO,NG-ON
+Akuku Toru,NG-RI-ATO,NG-RI
+Numan,NG-AD-NUM,NG-AD
+Eket,NG-AK-EKE,NG-AK
+Ayamelum,NG-AN-AYA,NG-AN
+Gboko,NG-BE-GBO,NG-BE
+Kala/Balge,NG-BO-KAL,NG-BO
+Oshimili North,NG-DE-ONO,NG-DE
+Ehime-Mbano,NG-IM-EMB,NG-IM
+Ibadan South East,NG-OY-ISE,NG-OY
+Kaga,NG-BO-KAG,NG-BO
+Obanliku,NG-CR-OBA,NG-CR
+Gabasawa,NG-KN-GAB,NG-KN
+Orelope,NG-OY-ORE,NG-OY
+kebbe,NG-SO-KEB,NG-SO
+Etinan,NG-AK-ETI,NG-AK
+Tafawa-Balewa,NG-BA-TBA,NG-BA
+Kusada,NG-KT-KUS,NG-KT
+Malumfashi,NG-KT-MAL,NG-KT
+Mashi,NG-KT-MAS,NG-KT
+Ibadan North,NG-OY-INO,NG-OY
+Yusufari,NG-YO-YUS,NG-YO
+Shinkafi,NG-ZA-SHI,NG-ZA
+Umu-Neochi,NG-AB-UNE,NG-AB
+Ise/Orun,NG-EK-ISE,NG-EK
+Faskari,NG-KT-FAS,NG-KT
+Ijumu,NG-KO-IJU,NG-KO
+Ijebu North,NG-OG-INO,NG-OG
+Oyo East,NG-OY-OEA,NG-OY
+Degema,NG-RI-DEG,NG-RI
+Nangere,NG-YO-NAN,NG-YO
+Onitsha North,NG-AN-ONO,NG-AN
+Gamawa LGA,NG-BA-GLG,NG-BA
+Gubio,NG-BO-GUB,NG-BO
+Soba,NG-KD-SOB,NG-KD
+Aleiro,NG-KE-ALE,NG-KE
+Suru,NG-KE-SUR,NG-KE
+Gbako,NG-NI-GBA,NG-NI
+Guri,NG-JI-GUR,NG-JI
+Egbado South,NG-OG-ESO,NG-OG
+Eleme,NG-RI-ELE,NG-RI
+Urue-Offong/Oruko,NG-AK-UOF,NG-AK
+Dunukofia,NG-AN-DUN,NG-AN
+Kaduna North,NG-KD-KNO,NG-KD
+Mobbar,NG-BO-MOB,NG-BO
+Abakaliki,NG-EB-ABA,NG-EB
+Kachia,NG-KD-KAC,NG-KD
+Garko,NG-KN-GAR,NG-KN
+Wasagu/Danko,NG-KE-WAS,NG-KE
+Ibarapa North,NG-OY-IN1,NG-OY
+Dass,NG-BA-DAS,NG-BA
+Makoda,NG-KN-MAK,NG-KN
+Ngaski,NG-KE-NGA,NG-KE
+Ibadan South West,NG-OY-ISW,NG-OY
+Tsafe,NG-ZA-TSA,NG-ZA
+Ohaji/Egbema,NG-IM-OHA,NG-IM
+Jaba,NG-KD-JAB,NG-KD
+Ido,NG-OY-IDO,NG-OY
+Oluyole,NG-OY-OLU,NG-OY
+Damboa,NG-BO-DAM,NG-BO
+Bomadi,NG-DE-BOM,NG-DE
+Isi-Uzo,NG-EN-IUZ,NG-EN
+Nkanu West,NG-EN-NWE,NG-EN
+Oru East,NG-IM-OEA,NG-IM
+Wudil,NG-KN-WUD,NG-KN
+Kokona,NG-NA-KOK,NG-NA
+Agaie,NG-NI-AGA,NG-NI
+Monguno,NG-BO-MON,NG-BO
+Yala,NG-CR-YAL,NG-CR
+Esan South East,NG-ED-ESE,NG-ED
+Dandi,NG-KE-DAN,NG-KE
+Idanre,NG-ON-IDA,NG-ON
+Owo,NG-ON-OWO,NG-ON
+Iseyin,NG-OY-IS1,NG-OY
+Obubra,NG-CR-OBU,NG-CR
+Orhionmwon,NG-ED-ORH,NG-ED
+Yankwashi,NG-JI-YAN,NG-JI
+Sabuwa,NG-KT-SAB,NG-KT
+Chanchaga,NG-NI-CHA,NG-NI
+Oron,NG-AK-ORO,NG-AK
+Kirfi,NG-BA-KIR,NG-BA
+Sapele,NG-DE-SAP,NG-DE
+Igbo-Eze South,NG-EN-IES,NG-EN
+Jos East,NG-PL-JEA,NG-PL
+Gashaka,NG-TA-GAS,NG-TA
+Cassol,NG-TA-CAS,NG-TA
+Nsit Ubium,NG-AK-NUB,NG-AK
+Kwande,NG-BE-KWA,NG-BE
+Kiyawa,NG-JI-KIY,NG-JI
+Arewa-Dandi,NG-KE-ADA,NG-KE
+Osisioma Ngwa,NG-AB-ONG,NG-AB
+Afikpo North,NG-EB-ANO,NG-EB
+Edati,NG-NI-EDA,NG-NI
+Aiyedire,NG-OS-AI1,NG-OS
+Oyigbo,NG-RI-OYI,NG-RI
+Onna,NG-AK-ONN,NG-AK
+Oyi,NG-AN-OYI,NG-AN
+Moba,NG-EK-MOB,NG-EK
+Enugu South,NG-EN-ESO,NG-EN
+Kwami,NG-GO-KWA,NG-GO
+Obafemi-Owode,NG-OG-OOW,NG-OG
+Iwo,NG-OS-IWO,NG-OS
+Andoni,NG-RI-AND,NG-RI
+Aninri,NG-EN-ANI,NG-EN

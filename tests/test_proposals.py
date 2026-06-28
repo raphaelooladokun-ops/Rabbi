@@ -78,7 +78,12 @@ def test_party_proposal_requires_tin_email_and_address_for_b2b():
     assert full.can_be_b2b is True
     assert party_entry_from_proposal(full).status == "B2B"
     assert full.state == "NG-LA"
-    assert full.local_government == ""  # never fabricated
+    assert full.local_government == "NG-LA-IKE"  # matched from the LGA reference
+
+    # An unrecognised area is left blank — never fabricated.
+    no_lga = propose_party("Acme", tin_hint="01234567-0001", email="a@b.com",
+                           address_text="1 Nowhere Close, Lagos")
+    assert no_lga.local_government == ""
 
     partial = propose_party("Beta", tin_hint="01234567-0001", address_text="1 Road, Lagos")
     assert partial.can_be_b2b is False  # no email

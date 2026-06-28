@@ -1,0 +1,124 @@
+"""Bundled Digitax/FIRS reference data (states, LGAs, invoice types, HSN and
+service codes) loaded from ``data/reference/*.csv``.
+
+These ship with the app and are version-controlled so lookups (e.g. an LGA
+name -> NG-XX-XXX code, or validating an HSN code) match Digitax exactly. All
+loaders are cached; matching is punctuation/case-insensitive.
+"""
+from __future__ import annotations
+
+import csv
+import re
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+
+REFERENCE_DIR = Path(__file__).resolve().parent.parent / "data" / "reference"
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^0-9a-z]+", " ", str(text).lower())).strip()
+
+
+def _digits(text: str) -> str:
+    return re.sub(r"\D", "", str(text))
+
+
+def _read(name: str) -> list[dict]:
+    path = REFERENCE_DIR / name
+    if not path.exists():
+        return []
+    with path.open("r", encoding="utf-8-sig", newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+# -- states -----------------------------------------------------------------
+@lru_cache(maxsize=1)
+def _states() -> dict[str, str]:
+    """Normalised state name -> NG-XX code (plus common aliases)."""
+    out: dict[str, str] = {}
+    for r in _read("state_codes.csv"):
+        out[_norm(r["name"])] = r["code"].strip()
+    # Helpful aliases for the FCT.
+    if "abuja federal capital territory" in out:
+        fc = out["abuja federal capital territory"]
+        out.setdefault("abuja", fc)
+        out.setdefault("fct", fc)
+        out.setdefault("federal capital territory", fc)
+    return out
+
+
+def state_code_from_text(text: str) -> str:
+    """Find a state name in free address text and return its NG-XX code."""
+    low = f" {_norm(text)} "
+    for name in sorted(_states(), key=len, reverse=True):
+        if f" {name} " in low:
+            return _states()[name]
+    return ""
+
+
+# -- LGAs -------------------------------------------------------------------
+@dataclass(frozen=True)
+class Lga:
+    name: str
+    lga_code: str  # NG-XX-XXX
+    state_code: str  # NG-XX
+
+
+@lru_cache(maxsize=1)
+def _lgas() -> list[Lga]:
+    return [
+        Lga(r["name"].strip(), r["lga_code"].strip(), r["state_code"].strip())
+        for r in _read("lga_codes.csv") if r.get("name")
+    ]
+
+
+def lga_from_text(text: str, state_code: str = "") -> tuple[str, str]:
+    """Find an LGA name in address text -> (lga_code, state_code).
+
+    Prefers an LGA in ``state_code`` when given; longest name wins to avoid a
+    short name matching inside a longer one. Returns ('', '') if none found.
+    """
+    low = f" {_norm(text)} "
+    best: tuple[str, str] | None = None
+    best_len = 0
+    for lga in _lgas():
+        if state_code and lga.state_code != state_code:
+            continue
+        nm = _norm(lga.name)
+        if nm and f" {nm} " in low and len(nm) > best_len:
+            best, best_len = (lga.lga_code, lga.state_code), len(nm)
+    return best if best else ("", "")
+
+
+# -- invoice types ----------------------------------------------------------
+@lru_cache(maxsize=1)
+def invoice_types() -> dict[str, str]:
+    """Digitax invoice type code -> label."""
+    return {r["code"].strip(): r["value"].strip() for r in _read("invoice_types.csv")}
+
+
+def invoice_type_label(code: str) -> str:
+    return invoice_types().get(str(code).strip(), "")
+
+
+# -- HSN product codes ------------------------------------------------------
+@lru_cache(maxsize=1)
+def _hsn_digit_set() -> set[str]:
+    return {_digits(r["hscode"]) for r in _read("hsn_codes.csv") if r.get("hscode")}
+
+
+def is_valid_hsn(code: str) -> bool:
+    """True if the code matches a Digitax HSN entry (ignoring dots/spacing)."""
+    d = _digits(code)
+    return bool(d) and d in _hsn_digit_set()
+
+
+# -- service codes ----------------------------------------------------------
+@lru_cache(maxsize=1)
+def service_codes() -> dict[str, str]:
+    return {r["code"].strip(): r["description"].strip() for r in _read("service_codes.csv")}
+
+
+def is_valid_service_code(code: str) -> bool:
+    return str(code).strip() in service_codes()

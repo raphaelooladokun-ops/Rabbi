@@ -40,6 +40,7 @@ clients_t = Table(
     Column("reader", String(64)),
     Column("b2b_expected", Boolean),
     Column("tin_suffix_rule", String(64)),
+    Column("invoice_type_code", String(8)),
     Column("notes", String(2000)),
 )
 
@@ -96,7 +97,9 @@ class SqlMasterStore:
             ClientConfig(
                 id=r["id"], name=r["name"], reader=r["reader"],
                 b2b_expected=bool(r["b2b_expected"]),
-                tin_suffix_rule=r["tin_suffix_rule"] or "", notes=r["notes"] or "",
+                tin_suffix_rule=r["tin_suffix_rule"] or "",
+                invoice_type_code=r["invoice_type_code"] or "388",
+                notes=r["notes"] or "",
             )
             for r in rows
         ]
@@ -108,7 +111,7 @@ class SqlMasterStore:
         values = dict(
             id=client.id, name=client.name, reader=client.reader,
             b2b_expected=client.b2b_expected, tin_suffix_rule=client.tin_suffix_rule,
-            notes=client.notes,
+            invoice_type_code=client.invoice_type_code, notes=client.notes,
         )
         with self.engine.begin() as conn:
             conn.execute(delete(clients_t).where(clients_t.c.id == client.id))
