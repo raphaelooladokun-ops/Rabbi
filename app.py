@@ -8,12 +8,14 @@ between runs.
 from __future__ import annotations
 
 import io
+import json
 import re
 from decimal import Decimal
 
 import pandas as pd
 import streamlit as st
 
+from core.backup import export_json, import_all
 from core.bootstrap import ensure_default_clients
 from core.engine import ProcessResult, process
 from core.masters import ClientConfig, ItemEntry, MasterStore, PartyEntry
@@ -647,6 +649,32 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
 def render_settings(store: MasterStore) -> None:
     st.header("Clients & settings")
 
+    st.subheader("Backup & restore")
+    st.caption("A portable safety copy of every client's items, customers, tax rates and settings — "
+               "independent of where the data is stored.")
+    from datetime import date as _date
+    bcol1, bcol2 = st.columns(2)
+    with bcol1:
+        st.download_button(
+            "⬇️ Download full masters backup (JSON)",
+            data=export_json(store).encode("utf-8"),
+            file_name=f"rabbi_masters_backup_{_date.today().isoformat()}.json",
+            mime="application/json", use_container_width=True,
+        )
+    with bcol2:
+        with st.expander("Restore from a backup file"):
+            st.warning("Restoring overwrites current masters with the backup's contents.")
+            up = st.file_uploader("Backup JSON", type=["json"], key="restore_backup")
+            if up is not None and st.button("Restore now"):
+                try:
+                    summary = import_all(store, json.loads(up.getvalue()))
+                    st.success(f"Restored {summary['clients']} clients, {summary['items']} items, "
+                               f"{summary['parties']} customers.")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"Could not restore: {exc}")
+
+    st.divider()
     st.subheader("Tax categories → VAT rate")
     rates = store.tax_rates()
     rdf = pd.DataFrame([{"category": k, "rate": str(v)} for k, v in rates.items()])
