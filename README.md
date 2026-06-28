@@ -92,6 +92,35 @@ Tax categories map to VAT rates under **Clients & settings** (default
 `STANDARD_VAT = 0.075`, `EXEMPT = 0`). The 7.5 % rate is configuration, not a
 hardcoded constant.
 
+## Create missing masters (new items & parties)
+
+When a run contains items/customers not yet in the masters, the Convert page
+proposes them for approval before anything is written:
+
+- **Items** — each unknown item is **fuzzy-matched against the existing master
+  first**. A close match (spacing/punctuation/case/minor wording) becomes a
+  *confirm-mapping* suggestion ("maps to ITM_xxx") so Digitax never gets a
+  duplicate item. Only genuinely-new items get a **new code**, continuing the
+  client's existing `ITM_` sequence in the same width, with category /
+  `tax_category_code` / `is_service` drafted from the master's existing
+  patterns and **HSN left for the operator to fill**. One physical item gets
+  one code per run.
+- **Parties** — a new **B2B** party is only created when the real details exist
+  (**TIN + email + address**); TINs and emails are never fabricated. For
+  Geeta/Goldcoin the TIN is read from the raw file's VAT No. column when
+  present. `state` (NG-XX) is derived from the address; **`local_government`
+  (NG-XX-XXX) needs the Digitax LGA code reference and is left editable, never
+  guessed**. Without the required details the customer stays **B2C** for the
+  run (flagged "could be B2B once details are obtained") and is not blocked.
+
+On approval the new items/parties are appended to the persistent masters and
+written to Digitax upload templates. **Staged output** then enforces order:
+`<client>_new_items_<period>.csv` and `<client>_new_parties_<period>.csv` are
+released first with "Upload these to Digitax first"; after a "Done — I've
+uploaded these" confirmation, `<client>_invoices_<period>.csv` is released with
+the new codes/TINs already embedded. If there are no new items/parties it skips
+straight to the invoices file.
+
 ## Key safety rules (never silently guess on a tax filing)
 
 - **Invoice-number 30-char cap** — trimmed from the end, **once per invoice**
@@ -167,6 +196,8 @@ using synthetic Tally/SALES-LEDGER fixtures.
   columns/sheets) and a few sample raw exports per client to validate against.
 - The exact Digitax CSV header/format from a known-good file (the column list
   here follows the brief; confirm field order and date formatting match).
+- **The Digitax LGA code reference** (LGA name → `NG-XX-XXX`) so the new-party
+  flow can fill `local_government` automatically. Until then it's left editable.
 - Friendship TIN normalisation rule (e.g. appending a missing `-0001` suffix).
 - Whether the Goldcoin client has any B2B customers.
 - Hosting target and the persistent-storage arrangement.

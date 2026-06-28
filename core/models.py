@@ -78,6 +78,11 @@ class LineRow:
     customer_name: str = ""
     customer_tin: Optional[str] = None
     tin_from_file: bool = False  # True if the TIN came straight from the source
+    # Raw TIN / address text seen near the customer in the source (e.g. the
+    # Tally "VAT No." column). Used only to PROPOSE a new B2B party — never to
+    # silently set the TIN on output.
+    customer_tin_hint: str = ""
+    customer_address: str = ""
 
     # --- Item -------------------------------------------------------------
     item_name: str = ""

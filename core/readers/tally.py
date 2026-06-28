@@ -96,6 +96,7 @@ def parse_tally(
     ctx_date = ctx_customer = ctx_voucher = None
     ctx_branch: Optional[str] = None
     ctx_total: Optional[Decimal] = None
+    ctx_tin_hint: str = ""
 
     for r in range(header_row + 1, len(grid)):
         sheet_row = r + 1  # 1-based for the operator
@@ -110,6 +111,7 @@ def parse_tally(
                 ctx_date = None
             ctx_customer = particulars
             ctx_voucher = voucher_no
+            ctx_tin_hint = clean_str(cell(grid, r, cols.get("vat_no")))
             voucher_type = clean_str(cell(grid, r, cols.get("voucher_type")))
             ctx_branch = _branch_from_voucher_type(voucher_type) if use_branch else None
             # Stated invoice total for reconciliation is the PRE-VAT subtotal
@@ -151,6 +153,7 @@ def parse_tally(
             branch=ctx_branch,
             invoice_date=ctx_date,
             customer_name=ctx_customer or "",
+            customer_tin_hint=ctx_tin_hint,
             item_name=particulars,
             invoice_stated_total=ctx_total,
             stated_total_includes_vat=False,  # pre-VAT subtotal

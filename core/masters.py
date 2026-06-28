@@ -22,21 +22,38 @@ DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "clients"
 
 @dataclass
 class ItemEntry:
-    """Maps a client's item name/description to a Digitax item_code."""
+    """Maps a client's item name/description to a Digitax item_code.
 
-    name: str
+    Carries the full Digitax item-template metadata so new items can be both
+    written to the upload template and remembered for future runs. Older
+    stored records (name/item_code/hsn_code/tax_category only) load fine — the
+    extra fields default.
+    """
+
+    name: str  # item_name
     item_code: str
     hsn_code: str = ""
-    tax_category: str = "STANDARD_VAT"
+    tax_category: str = "STANDARD_VAT"  # tax_category_code
+    item_category: str = ""
+    description: str = ""
+    is_service: bool = False
 
 
 @dataclass
 class PartyEntry:
-    """Maps a customer name to a TIN and B2B/B2C status."""
+    """Maps a customer name to a TIN/B2B-B2C status plus Digitax party fields."""
 
     name: str
-    tin: str = ""
+    tin: str = ""  # tax_identification_number
     status: str = "B2C"  # "B2B" / "B2C"
+    email_address: str = ""
+    phone_number: str = ""
+    street_name: str = ""
+    city_name: str = ""
+    postal_zone: str = ""
+    country: str = "NGA"
+    local_government: str = ""  # NG-XX-XXX
+    state: str = ""  # NG-XX
 
 
 @dataclass

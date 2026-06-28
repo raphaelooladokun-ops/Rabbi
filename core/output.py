@@ -140,3 +140,57 @@ def write_exceptions_csv(result: ProcessResult) -> str:
     for row in build_exception_rows(result):
         writer.writerow(row)
     return buf.getvalue()
+
+
+# --- Digitax master upload templates (exact headers / column order) --------
+ITEM_TEMPLATE_COLUMNS = (
+    "item_name", "item_category", "hsn_code", "description",
+    "tax_category_code", "item_code", "is_service",
+)
+PARTY_TEMPLATE_COLUMNS = (
+    "tax_identification_number", "email_address", "name", "phone_number(optional)",
+    "street_name", "city_name", "postal_zone", "country", "local_government", "state",
+)
+
+
+def _bool_str(value) -> str:
+    return "TRUE" if value else "FALSE"
+
+
+def write_items_template(entries: Iterable) -> str:
+    """Write ItemEntry records in the exact Digitax item-template format."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=list(ITEM_TEMPLATE_COLUMNS))
+    writer.writeheader()
+    for e in entries:
+        writer.writerow({
+            "item_name": e.name,
+            "item_category": e.item_category,
+            "hsn_code": e.hsn_code,
+            "description": e.description or e.name,
+            "tax_category_code": e.tax_category,
+            "item_code": e.item_code,
+            "is_service": _bool_str(e.is_service),
+        })
+    return buf.getvalue()
+
+
+def write_parties_template(entries: Iterable) -> str:
+    """Write PartyEntry records in the exact Digitax party-template format."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=list(PARTY_TEMPLATE_COLUMNS))
+    writer.writeheader()
+    for e in entries:
+        writer.writerow({
+            "tax_identification_number": e.tin,
+            "email_address": e.email_address,
+            "name": e.name,
+            "phone_number(optional)": e.phone_number,
+            "street_name": e.street_name,
+            "city_name": e.city_name,
+            "postal_zone": e.postal_zone,
+            "country": e.country or "NGA",
+            "local_government": e.local_government,
+            "state": e.state,
+        })
+    return buf.getvalue()

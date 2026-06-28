@@ -11,6 +11,7 @@ selects one based on whether ``DATABASE_URL`` is configured.
 """
 from __future__ import annotations
 
+from dataclasses import asdict
 from decimal import Decimal
 from typing import Optional
 
@@ -50,6 +51,9 @@ items_t = Table(
     Column("item_code", String(64)),
     Column("hsn_code", String(64)),
     Column("tax_category", String(64)),
+    Column("item_category", String(255)),
+    Column("description", String(1024)),
+    Column("is_service", Boolean),
 )
 
 parties_t = Table(
@@ -59,6 +63,14 @@ parties_t = Table(
     Column("name", String(512)),
     Column("tin", String(64)),
     Column("status", String(8)),
+    Column("email_address", String(255)),
+    Column("phone_number", String(64)),
+    Column("street_name", String(512)),
+    Column("city_name", String(255)),
+    Column("postal_zone", String(32)),
+    Column("country", String(8)),
+    Column("local_government", String(32)),
+    Column("state", String(32)),
 )
 
 tax_rates_t = Table(
@@ -125,16 +137,28 @@ class SqlMasterStore:
         return self.tax_rates().get(category.strip().upper())
 
     # -- items -------------------------------------------------------------
+    @staticmethod
+    def _item_from_row(r) -> ItemEntry:
+        return ItemEntry(
+            name=r["name"], item_code=r["item_code"] or "", hsn_code=r["hsn_code"] or "",
+            tax_category=r["tax_category"] or "STANDARD_VAT",
+            item_category=r["item_category"] or "", description=r["description"] or "",
+            is_service=bool(r["is_service"]),
+        )
+
+    @staticmethod
+    def _item_values(client_id: str, e: ItemEntry) -> dict:
+        d = asdict(e)
+        d["client_id"] = client_id
+        d["name_key"] = normalize_key(e.name)
+        return d
+
     def list_items(self, client_id: str) -> list[ItemEntry]:
         with self.engine.connect() as conn:
             rows = conn.execute(
                 select(items_t).where(items_t.c.client_id == client_id).order_by(items_t.c.item_code)
             ).mappings().all()
-        return [
-            ItemEntry(name=r["name"], item_code=r["item_code"], hsn_code=r["hsn_code"] or "",
-                      tax_category=r["tax_category"] or "STANDARD_VAT")
-            for r in rows
-        ]
+        return [self._item_from_row(r) for r in rows]
 
     def lookup_item(self, client_id: str, *, name: str = "", hsn: str = "") -> Optional[ItemEntry]:
         name_key = normalize_key(name)
@@ -146,16 +170,14 @@ class SqlMasterStore:
                     )
                 ).mappings().first()
                 if r:
-                    return ItemEntry(r["name"], r["item_code"], r["hsn_code"] or "",
-                                     r["tax_category"] or "STANDARD_VAT")
+                    return self._item_from_row(r)
             hsn_key = normalize_key(hsn)
             if hsn_key:
                 for r in conn.execute(
                     select(items_t).where(items_t.c.client_id == client_id)
                 ).mappings():
                     if r["hsn_code"] and normalize_key(r["hsn_code"]) == hsn_key:
-                        return ItemEntry(r["name"], r["item_code"], r["hsn_code"] or "",
-                                         r["tax_category"] or "STANDARD_VAT")
+                        return self._item_from_row(r)
         return None
 
     def upsert_item(self, client_id: str, entry: ItemEntry) -> None:
@@ -163,9 +185,7 @@ class SqlMasterStore:
         with self.engine.begin() as conn:
             conn.execute(delete(items_t).where(
                 items_t.c.client_id == client_id, items_t.c.name_key == key))
-            conn.execute(items_t.insert().values(
-                client_id=client_id, name_key=key, name=entry.name,
-                item_code=entry.item_code, hsn_code=entry.hsn_code, tax_category=entry.tax_category))
+            conn.execute(items_t.insert().values(**self._item_values(client_id, entry)))
 
     def seed_items(self, client_id: str, entries: list[ItemEntry]) -> None:
         # De-duplicate by normalised name (last one wins), matching file store.
@@ -173,19 +193,32 @@ class SqlMasterStore:
         with self.engine.begin() as conn:
             conn.execute(delete(items_t).where(items_t.c.client_id == client_id))
             if unique:
-                conn.execute(items_t.insert(), [
-                    dict(client_id=client_id, name_key=k, name=e.name, item_code=e.item_code,
-                         hsn_code=e.hsn_code, tax_category=e.tax_category)
-                    for k, e in unique.items()
-                ])
+                conn.execute(items_t.insert(), [self._item_values(client_id, e) for e in unique.values()])
 
     # -- parties -----------------------------------------------------------
+    @staticmethod
+    def _party_from_row(r) -> PartyEntry:
+        return PartyEntry(
+            name=r["name"], tin=r["tin"] or "", status=r["status"] or "B2C",
+            email_address=r["email_address"] or "", phone_number=r["phone_number"] or "",
+            street_name=r["street_name"] or "", city_name=r["city_name"] or "",
+            postal_zone=r["postal_zone"] or "", country=r["country"] or "NGA",
+            local_government=r["local_government"] or "", state=r["state"] or "",
+        )
+
+    @staticmethod
+    def _party_values(client_id: str, e: PartyEntry) -> dict:
+        d = asdict(e)
+        d["client_id"] = client_id
+        d["name_key"] = normalize_key(e.name)
+        return d
+
     def list_parties(self, client_id: str) -> list[PartyEntry]:
         with self.engine.connect() as conn:
             rows = conn.execute(
                 select(parties_t).where(parties_t.c.client_id == client_id).order_by(parties_t.c.name)
             ).mappings().all()
-        return [PartyEntry(name=r["name"], tin=r["tin"] or "", status=r["status"] or "B2C") for r in rows]
+        return [self._party_from_row(r) for r in rows]
 
     def lookup_party(self, client_id: str, name: str) -> Optional[PartyEntry]:
         key = normalize_key(name)
@@ -196,23 +229,18 @@ class SqlMasterStore:
                 select(parties_t).where(
                     parties_t.c.client_id == client_id, parties_t.c.name_key == key)
             ).mappings().first()
-        return PartyEntry(r["name"], r["tin"] or "", r["status"] or "B2C") if r else None
+        return self._party_from_row(r) if r else None
 
     def upsert_party(self, client_id: str, entry: PartyEntry) -> None:
         key = normalize_key(entry.name)
         with self.engine.begin() as conn:
             conn.execute(delete(parties_t).where(
                 parties_t.c.client_id == client_id, parties_t.c.name_key == key))
-            conn.execute(parties_t.insert().values(
-                client_id=client_id, name_key=key, name=entry.name,
-                tin=entry.tin, status=entry.status))
+            conn.execute(parties_t.insert().values(**self._party_values(client_id, entry)))
 
     def seed_parties(self, client_id: str, entries: list[PartyEntry]) -> None:
         unique: dict[str, PartyEntry] = {normalize_key(e.name): e for e in entries}
         with self.engine.begin() as conn:
             conn.execute(delete(parties_t).where(parties_t.c.client_id == client_id))
             if unique:
-                conn.execute(parties_t.insert(), [
-                    dict(client_id=client_id, name_key=k, name=e.name, tin=e.tin, status=e.status)
-                    for k, e in unique.items()
-                ])
+                conn.execute(parties_t.insert(), [self._party_values(client_id, e) for e in unique.values()])

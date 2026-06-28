@@ -17,7 +17,14 @@ from core.bootstrap import ensure_default_clients
 from core.engine import ProcessResult, process
 from core.masters import ClientConfig, ItemEntry, MasterStore, PartyEntry
 from core.models import FlagCode
-from core.output import build_exception_rows, write_csv_bytes, write_exceptions_csv
+from core.output import (
+    build_exception_rows,
+    write_csv_bytes,
+    write_exceptions_csv,
+    write_items_template,
+    write_parties_template,
+)
+from core.proposals import propose_items, propose_party, run_period
 from core.readers import get_reader
 from core.store import get_master_store
 from ui.auth import login_gate, logout_button
@@ -79,59 +86,46 @@ def render_convert(store: MasterStore, client: ClientConfig) -> None:
     c3.metric("Need attention", len(blocking))
     c4.metric("Item lines", len(rows))
 
-    _render_download(result)
+    _render_exceptions(result)
     st.divider()
-    _render_exceptions(store, client, result)
+    _render_create_masters(store, client, result)
+    st.divider()
+    _render_staged_output(client, result)
 
 
-def _render_download(result: ProcessResult) -> None:
-    st.subheader("1. Download the Digitax CSV")
-    ready = result.ready_invoices
-    blocking = result.blocking_invoices
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Ready invoices only** — safe to upload to Digitax as-is.")
-        if ready:
-            st.download_button(
-                f"⬇️ Download ready CSV ({len(ready)} invoices)",
-                data=write_csv_bytes(result.invoices, only_ready=True),
-                file_name="digitax_upload_ready.csv",
-                mime="text/csv",
-                type="primary",
-                use_container_width=True,
-            )
-        else:
-            st.caption("No fully-ready invoices yet.")
-    with col2:
-        st.markdown("**All invoices** — includes flagged ones for you to fix in Excel.")
-        st.download_button(
-            f"⬇️ Download ALL CSV ({len(result.invoices)} invoices)",
-            data=write_csv_bytes(result.invoices, only_ready=False),
-            file_name="digitax_upload_all.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-    if blocking:
-        st.caption(
-            f"ℹ️ {len(blocking)} invoice(s) are flagged. In the ALL file, any line whose item "
-            "isn't recognised has a blank **item_code** for you to fill in — see the list below."
-        )
+# -- per-run session buckets (scoped to the uploaded file) ------------------
+def _run_key() -> str:
+    return st.session_state.get("rows_key", "")
 
 
-def _render_exceptions(store: MasterStore, client: ClientConfig, result: ProcessResult) -> None:
-    st.subheader("2. Lines needing attention")
+def _bucket(name: str) -> dict:
+    """A dict scoped to the current uploaded file (resets on a new upload)."""
+    return st.session_state.setdefault(name, {}).setdefault(_run_key(), {})
+
+
+def _uploaded_done() -> bool:
+    return st.session_state.setdefault("uploaded_done", {}).get(_run_key(), False)
+
+
+def _distinct_flagged(result: ProcessResult, code: FlagCode, key: str) -> list[str]:
+    return sorted({
+        f.context.get(key, "")
+        for iv in result.invoices for f in iv.all_flags
+        if f.code == code and f.context.get(key)
+    })
+
+
+def _render_exceptions(result: ProcessResult) -> None:
+    st.subheader("Lines needing attention")
     report = build_exception_rows(result)
     if not report:
         st.success("Nothing flagged — every invoice is ready.")
         return
-
     st.caption(
-        "Fix these directly in the downloaded **ALL** file (the *source_rows* column points to the "
-        "row in your original sheet), or add them to the memory below so future runs recognise them."
+        "Resolve these below (Create missing masters), or fix them directly in the downloaded "
+        "invoices file — the *source_rows* column points to the row in your original sheet."
     )
-    df = pd.DataFrame(report)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(report), use_container_width=True, hide_index=True)
     st.download_button(
         "⬇️ Download this list (CSV)",
         data=write_exceptions_csv(result).encode("utf-8"),
@@ -139,69 +133,213 @@ def _render_exceptions(store: MasterStore, client: ClientConfig, result: Process
         mime="text/csv",
     )
 
-    _render_bulk_resolve(store, client, result)
 
-
-def _render_bulk_resolve(store: MasterStore, client: ClientConfig, result: ProcessResult) -> None:
-    """Optional one-shot way to teach the app every unknown item/customer in
-    this run at once (instead of one-by-one), so future runs recognise them."""
-    unknown_items = sorted({
-        f.context.get("item_name", "")
-        for iv in result.invoices for f in iv.all_flags
-        if f.code == FlagCode.ITEM_NOT_FOUND and f.context.get("item_name")
-    })
-    unknown_custs = sorted({
-        f.context.get("customer_name", "")
-        for iv in result.invoices for f in iv.all_flags
-        if f.code == FlagCode.CUSTOMER_NOT_FOUND and f.context.get("customer_name")
-    })
+# ---------------------------------------------------------------------------
+# Create missing masters
+# ---------------------------------------------------------------------------
+def _render_create_masters(store: MasterStore, client: ClientConfig, result: ProcessResult) -> None:
+    unknown_items = _distinct_flagged(result, FlagCode.ITEM_NOT_FOUND, "item_name")
+    unknown_custs = _distinct_flagged(result, FlagCode.CUSTOMER_NOT_FOUND, "customer_name")
     if not unknown_items and not unknown_custs:
         return
 
-    tax_categories = list(store.tax_rates().keys())
-    with st.expander("➕ Optional: add the unknown items / customers to the memory (all at once)"):
-        if unknown_items:
-            st.markdown(f"**{len(unknown_items)} unknown item(s)** — fill in the item_code, then Save.")
-            seed = pd.DataFrame(
-                [{"name": n, "item_code": "", "hsn_code": "", "tax_category": "STANDARD_VAT"} for n in unknown_items]
-            )
-            edited = st.data_editor(
-                seed, hide_index=True, use_container_width=True, key="bulk_items",
-                disabled=["name"],
-                column_config={"tax_category": st.column_config.SelectboxColumn(options=tax_categories)},
-            )
-            if st.button("Save these items to the memory"):
-                n = 0
-                for _, r in edited.iterrows():
-                    code = str(r.get("item_code", "")).strip()
-                    if code:
-                        store.upsert_item(client.id, ItemEntry(
-                            name=str(r["name"]).strip(), item_code=code,
-                            hsn_code=str(r.get("hsn_code", "")).strip(),
-                            tax_category=str(r.get("tax_category", "STANDARD_VAT")).strip() or "STANDARD_VAT"))
-                        n += 1
-                st.success(f"Added {n} item(s). Re-uploading the file will now recognise them.")
-                st.rerun()
+    st.subheader("Create missing masters")
+    st.caption(
+        "New items are matched against the existing master first to avoid duplicate Digitax "
+        "items; only genuinely-new ones get a new code. Nothing is auto-trusted — approve below."
+    )
+    if unknown_items:
+        _render_item_proposals(store, client, unknown_items)
+    if unknown_custs:
+        _render_party_proposals(store, client, result, unknown_custs)
 
-        if unknown_custs:
-            st.markdown(f"**{len(unknown_custs)} unknown customer(s)** — set status/TIN (B2B needs a TIN), then Save.")
-            seed = pd.DataFrame([{"name": n, "status": "B2C", "tin": ""} for n in unknown_custs])
-            edited = st.data_editor(
-                seed, hide_index=True, use_container_width=True, key="bulk_parties",
-                disabled=["name"],
-                column_config={"status": st.column_config.SelectboxColumn(options=["B2B", "B2C"])},
+
+def _render_item_proposals(store: MasterStore, client: ClientConfig, unknown_items: list[str]) -> None:
+    items_master = store.list_items(client.id)
+    tax_categories = list(store.tax_rates().keys())
+    force_new = list(_bucket("not_a_match").keys())
+    proposals = propose_items(unknown_items, items_master, force_new=force_new)
+    matches = [p for p in proposals if p.kind == "possible_match"]
+    new = [p for p in proposals if p.kind == "new"]
+
+    if matches:
+        st.markdown(f"**Possible duplicates ({len(matches)})** — confirm each maps to an existing item.")
+        mdf = pd.DataFrame([
+            {"item": p.name, "maps_to": p.match_code, "similarity": p.match_score, "confirm": True}
+            for p in matches
+        ])
+        edited = st.data_editor(
+            mdf, hide_index=True, use_container_width=True, key=f"match_{_run_key()}",
+            disabled=["item", "maps_to", "similarity"],
+            column_config={"confirm": st.column_config.CheckboxColumn(help="Tick = same item; untick = actually new")},
+        )
+        if st.button("Apply mappings", key=f"applymap_{_run_key()}"):
+            by_code = {e.item_code: e for e in items_master}
+            mapped = forced_new = 0
+            for _, r in edited.iterrows():
+                name = str(r["item"])
+                if bool(r["confirm"]):
+                    m = by_code.get(str(r["maps_to"]))
+                    if m:
+                        store.upsert_item(client.id, ItemEntry(
+                            name=name, item_code=m.item_code, hsn_code=m.hsn_code,
+                            tax_category=m.tax_category, item_category=m.item_category,
+                            description=m.description, is_service=m.is_service))
+                        mapped += 1
+                else:
+                    _bucket("not_a_match")[name] = True
+                    forced_new += 1
+            st.success(f"Mapped {mapped} item(s) to existing codes; {forced_new} moved to 'new'.")
+            st.rerun()
+
+    if new:
+        st.markdown(f"**New items ({len(new)})** — review (HSN code required), then approve.")
+        ndf = pd.DataFrame([
+            {"name": p.name, "item_code": p.item_code, "item_category": p.item_category,
+             "hsn_code": p.hsn_code, "description": p.description,
+             "tax_category_code": p.tax_category_code, "is_service": p.is_service}
+            for p in new
+        ])
+        edited = st.data_editor(
+            ndf, hide_index=True, use_container_width=True, key=f"newitems_{_run_key()}",
+            disabled=["name", "item_code"],
+            column_config={
+                "tax_category_code": st.column_config.SelectboxColumn(options=tax_categories),
+                "is_service": st.column_config.CheckboxColumn(),
+            },
+        )
+        if st.button("Approve new items", key=f"approveitems_{_run_key()}"):
+            created = _bucket("created_items")
+            missing_hsn = 0
+            for _, r in edited.iterrows():
+                if not str(r.get("hsn_code", "")).strip():
+                    missing_hsn += 1
+                entry = ItemEntry(
+                    name=str(r["name"]), item_code=str(r["item_code"]),
+                    hsn_code=str(r.get("hsn_code", "")).strip(),
+                    tax_category=str(r.get("tax_category_code", "STANDARD_VAT")).strip() or "STANDARD_VAT",
+                    item_category=str(r.get("item_category", "")).strip(),
+                    description=str(r.get("description", "")).strip() or str(r["name"]),
+                    is_service=bool(r.get("is_service", False)))
+                store.upsert_item(client.id, entry)
+                created[entry.name] = entry
+            msg = f"Approved {len(edited)} new item(s)."
+            if missing_hsn:
+                msg += f" ⚠️ {missing_hsn} still have a blank HSN code."
+            st.success(msg)
+            st.rerun()
+
+
+def _render_party_proposals(store, client, result, unknown_custs) -> None:
+    # Collect any TIN / address hint seen near each customer in the raw file.
+    hints: dict[str, tuple[str, str]] = {}
+    for iv in result.invoices:
+        for ln in iv.lines:
+            if ln.customer_name and ln.customer_name not in hints:
+                hints[ln.customer_name] = (ln.customer_tin_hint, ln.customer_address)
+
+    proposals = [
+        propose_party(name, tin_hint=hints.get(name, ("", ""))[0],
+                      address_text=hints.get(name, ("", ""))[1])
+        for name in unknown_custs
+    ]
+    st.markdown(f"**Customers ({len(proposals)})** — for B2B, fill **TIN + email + address**; "
+                "leave blank to keep B2C (not blocked).")
+    st.caption("`local_government` (NG-XX-XXX) needs the Digitax LGA code reference — it is left "
+               "editable and never guessed. `state` (NG-XX) is derived from the address when possible.")
+    pdf = pd.DataFrame([
+        {"name": p.name, "tin": p.tin, "email_address": p.email_address,
+         "street_name": p.street_name, "city_name": p.city_name, "postal_zone": p.postal_zone,
+         "state": p.state, "local_government": p.local_government, "approve": False}
+        for p in proposals
+    ])
+    edited = st.data_editor(
+        pdf, hide_index=True, use_container_width=True, key=f"newparties_{_run_key()}",
+        disabled=["name"],
+        column_config={"approve": st.column_config.CheckboxColumn(help="Tick to save this customer")},
+    )
+    if st.button("Approve customers", key=f"approveparties_{_run_key()}"):
+        created = _bucket("created_parties")
+        n_b2b = n_b2c = 0
+        for _, r in edited.iterrows():
+            if not bool(r.get("approve", False)):
+                continue
+            tin = str(r.get("tin", "")).strip()
+            email = str(r.get("email_address", "")).strip()
+            street = str(r.get("street_name", "")).strip()
+            is_b2b = bool(tin and email and street)
+            entry = PartyEntry(
+                name=str(r["name"]), tin=tin, status="B2B" if is_b2b else "B2C",
+                email_address=email, street_name=street,
+                city_name=str(r.get("city_name", "")).strip(),
+                postal_zone=str(r.get("postal_zone", "")).strip(), country="NGA",
+                local_government=str(r.get("local_government", "")).strip(),
+                state=str(r.get("state", "")).strip())
+            store.upsert_party(client.id, entry)
+            if is_b2b:
+                created[entry.name] = entry
+                n_b2b += 1
+            else:
+                n_b2c += 1
+        st.success(f"Saved {n_b2b} B2B and {n_b2c} B2C customer(s).")
+        st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Staged output (masters first, then invoices)
+# ---------------------------------------------------------------------------
+def _render_staged_output(client: ClientConfig, result: ProcessResult) -> None:
+    st.subheader("Download")
+    period = run_period(iv.invoice_date for iv in result.invoices)
+    slug = client.id
+    created_items = list(_bucket("created_items").values())
+    created_parties = list(_bucket("created_parties").values())
+
+    if (created_items or created_parties) and not _uploaded_done():
+        st.warning(
+            "**Upload these to Digitax first.** New items and customers must exist in Digitax "
+            "before it will accept invoices that reference them."
+        )
+        if created_items:
+            st.download_button(
+                f"⬇️ {slug}_new_items_{period}.csv  ({len(created_items)} items)",
+                data=write_items_template(created_items).encode("utf-8"),
+                file_name=f"{slug}_new_items_{period}.csv", mime="text/csv", type="primary",
             )
-            if st.button("Save these customers to the memory"):
-                n = 0
-                for _, r in edited.iterrows():
-                    name = str(r.get("name", "")).strip()
-                    if name:
-                        store.upsert_party(client.id, PartyEntry(
-                            name=name, tin=str(r.get("tin", "")).strip(),
-                            status=str(r.get("status", "B2C")).strip().upper() or "B2C"))
-                        n += 1
-                st.success(f"Added {n} customer(s). Re-uploading the file will now recognise them.")
-                st.rerun()
+        if created_parties:
+            st.download_button(
+                f"⬇️ {slug}_new_parties_{period}.csv  ({len(created_parties)} customers)",
+                data=write_parties_template(created_parties).encode("utf-8"),
+                file_name=f"{slug}_new_parties_{period}.csv", mime="text/csv", type="primary",
+            )
+        if st.button("✅ Done — I've uploaded these to Digitax", key=f"done_{_run_key()}"):
+            st.session_state.setdefault("uploaded_done", {})[_run_key()] = True
+            st.rerun()
+        st.info("The invoices file unlocks once you confirm the upload above.")
+        return
+
+    if created_items or created_parties:
+        st.caption("New items/customers uploaded ✓ — their codes and TINs are already embedded below.")
+
+    ready = result.ready_invoices
+    col1, col2 = st.columns(2)
+    with col1:
+        if ready:
+            st.download_button(
+                f"⬇️ {slug}_invoices_{period}.csv  ({len(ready)} ready)",
+                data=write_csv_bytes(result.invoices, only_ready=True),
+                file_name=f"{slug}_invoices_{period}.csv", mime="text/csv", type="primary",
+                use_container_width=True,
+            )
+        else:
+            st.caption("No fully-ready invoices yet.")
+    with col2:
+        st.download_button(
+            f"⬇️ All invoices incl. flagged ({len(result.invoices)})",
+            data=write_csv_bytes(result.invoices, only_ready=False),
+            file_name=f"{slug}_invoices_all_{period}.csv", mime="text/csv",
+            use_container_width=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -238,16 +376,31 @@ def _pick(row, columns_norm, aliases) -> str:
 
 # Accepted source-column names for each target field (normalised on compare).
 _ITEM_ALIASES = {
-    "name": ["name", "item_name", "item name", "description", "item description"],
+    "name": ["item_name", "name", "item name"],
     "item_code": ["item_code", "itemcode", "code"],
     "hsn_code": ["hsn_code", "hsn", "hsn_.30", "hsn .30", "hsn30", "hs/service code", "hs_code"],
-    "tax_category": ["tax_category", "tax_category_code", "category", "tax category"],
+    "tax_category": ["tax_category_code", "tax_category", "category", "tax category"],
+    "item_category": ["item_category", "category_name"],
+    "description": ["description", "item description"],
+    "is_service": ["is_service", "service"],
 }
 _PARTY_ALIASES = {
     "name": ["name", "customer_name", "customer name", "customer", "party"],
-    "tin": ["tin", "tin no", "tin_no", "tinno"],
+    "tin": ["tax_identification_number", "tin", "tin no", "tin_no", "tinno"],
     "status": ["status", "b2b/b2c", "type", "b2b_b2c"],
+    "email_address": ["email_address", "email"],
+    "phone_number": ["phone_number(optional)", "phone_number", "phone"],
+    "street_name": ["street_name", "street", "address"],
+    "city_name": ["city_name", "city"],
+    "postal_zone": ["postal_zone", "postal", "zip"],
+    "country": ["country"],
+    "local_government": ["local_government", "lga"],
+    "state": ["state"],
 }
+
+
+def _truthy(text: str) -> bool:
+    return str(text).strip().upper() in {"TRUE", "YES", "1", "Y"}
 
 
 def render_masters(store: MasterStore, client: ClientConfig) -> None:
@@ -297,6 +450,9 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
                         item_code=_pick(r, cols, _ITEM_ALIASES["item_code"]),
                         hsn_code=_pick(r, cols, _ITEM_ALIASES["hsn_code"]),
                         tax_category=_pick(r, cols, _ITEM_ALIASES["tax_category"]).upper() or "STANDARD_VAT",
+                        item_category=_pick(r, cols, _ITEM_ALIASES["item_category"]),
+                        description=_pick(r, cols, _ITEM_ALIASES["description"]),
+                        is_service=_truthy(_pick(r, cols, _ITEM_ALIASES["is_service"])),
                     ))
                 store.seed_items(client.id, entries)
                 missing_code = sum(1 for e in entries if not e.item_code)
@@ -345,7 +501,17 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
                     status = _pick(r, cols, _PARTY_ALIASES["status"]).upper()
                     if not status:
                         status = "B2B" if tin else "B2C"
-                    entries.append(PartyEntry(name=name, tin=tin, status=status))
+                    entries.append(PartyEntry(
+                        name=name, tin=tin, status=status,
+                        email_address=_pick(r, cols, _PARTY_ALIASES["email_address"]),
+                        phone_number=_pick(r, cols, _PARTY_ALIASES["phone_number"]),
+                        street_name=_pick(r, cols, _PARTY_ALIASES["street_name"]),
+                        city_name=_pick(r, cols, _PARTY_ALIASES["city_name"]),
+                        postal_zone=_pick(r, cols, _PARTY_ALIASES["postal_zone"]),
+                        country=_pick(r, cols, _PARTY_ALIASES["country"]) or "NGA",
+                        local_government=_pick(r, cols, _PARTY_ALIASES["local_government"]),
+                        state=_pick(r, cols, _PARTY_ALIASES["state"]),
+                    ))
                 store.seed_parties(client.id, entries)
                 st.success(f"Imported {len(entries)} parties.")
                 st.rerun()
