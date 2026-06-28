@@ -262,6 +262,30 @@ def _render_party_proposals(store, client, result, unknown_custs) -> None:
                 "Leave as **B2C** otherwise — not blocked. Nothing is fabricated.")
     st.caption("Pick the **State**, then the **LGA** list narrows to that state (no scrolling 774).")
 
+    # Shortcut: register every customer that already has a TIN in the sales file
+    # as B2B in one click (TIN + any derivable state/LGA), instead of one by one.
+    with_tin = [n for n in unknown_custs if hints.get(n, ("", ""))[0]]
+    if with_tin:
+        if st.button(f"⚡ Accept all {len(with_tin)} sales-file TINs as B2B", key=f"accepttins_{_run_key()}"):
+            created = _bucket("created_parties")
+            for n in with_tin:
+                tin_hint, addr = hints.get(n, ("", ""))
+                prop = propose_party(n, tin_hint=tin_hint, address_text=addr)
+                entry = PartyEntry(
+                    name=n, tin=prop.tin, status="B2B", email_address=prop.email_address,
+                    street_name=addr, state=prop.state, local_government=prop.local_government,
+                    country="NGA")
+                store.upsert_party(client.id, entry)
+                created[n] = entry
+            st.success(
+                f"Registered {len(with_tin)} B2B customer(s) from the sales file. "
+                "Download the new-parties CSV below and upload it to Digitax before the invoices."
+            )
+            st.rerun()
+        st.caption("Only customers whose TIN is in the sales file are added; review individually below to set "
+                   "email/address. The new-parties file is gated behind the same 'uploaded to Digitax' "
+                   "confirmation as items.")
+
     state_opts = [""] + [f"{n}  ({c})" for n, c in reference.states()]
     state_code_by_label = {f"{n}  ({c})": c for n, c in reference.states()}
 
