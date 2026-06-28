@@ -87,6 +87,11 @@ def _lgas() -> list[Lga]:
     ]
 
 
+def all_lgas() -> list[Lga]:
+    """Every LGA (name, NG-XX-XXX code, NG-XX state code)."""
+    return list(_lgas())
+
+
 @lru_cache(maxsize=64)
 def lgas_for_state(state_code: str) -> list[tuple[str, str]]:
     """(LGA name, NG-XX-XXX code) within a state, sorted by name (for dropdowns)."""

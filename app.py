@@ -257,99 +257,85 @@ def _render_party_proposals(store, client, result, unknown_custs) -> None:
             if ln.customer_name and ln.customer_name not in hints:
                 hints[ln.customer_name] = (ln.customer_tin_hint, ln.customer_address)
 
-    st.markdown(f"**Customers ({len(unknown_custs)})** — set **B2B** for any with a TIN "
-                "(pre-filled from the sales file where present); complete the address. "
-                "Leave as **B2C** otherwise — not blocked. Nothing is fabricated.")
-    st.caption("Pick the **State**, then the **LGA** list narrows to that state (no scrolling 774).")
-
-    # Shortcut: register every customer that already has a TIN in the sales file
-    # as B2B in one click (TIN + any derivable state/LGA), instead of one by one.
     with_tin = [n for n in unknown_custs if hints.get(n, ("", ""))[0]]
+    without_tin = [n for n in unknown_custs if not hints.get(n, ("", ""))[0]]
+
+    # Dropdown option labels (built once).
+    state_pairs = reference.states()
+    state_opts = [f"{n} ({c})" for n, c in state_pairs]
+    s_label2code = {f"{n} ({c})": c for n, c in state_pairs}
+    s_code2label = {c: f"{n} ({c})" for n, c in state_pairs}
+    lga_opts = [f"{l.name} ({l.lga_code})" for l in reference.all_lgas()]
+    l_label2code = {f"{l.name} ({l.lga_code})": l.lga_code for l in reference.all_lgas()}
+    l_code2label = {l.lga_code: f"{l.name} ({l.lga_code})" for l in reference.all_lgas()}
+    dropdowns = (state_opts, s_label2code, s_code2label, lga_opts, l_label2code, l_code2label)
+
+    st.markdown("**Customers** — Digitax needs the full record (TIN, email, address, state, LGA) "
+                "for a B2B party. Complete the rows and approve; nothing is fabricated.")
+
     if with_tin:
-        if st.button(f"⚡ Accept all {len(with_tin)} sales-file TINs as B2B", key=f"accepttins_{_run_key()}"):
-            created = _bucket("created_parties")
-            for n in with_tin:
-                tin_hint, addr = hints.get(n, ("", ""))
-                prop = propose_party(n, tin_hint=tin_hint, address_text=addr)
-                entry = PartyEntry(
-                    name=n, tin=prop.tin, status="B2B", email_address=prop.email_address,
-                    street_name=addr, state=prop.state, local_government=prop.local_government,
-                    country="NGA")
-                store.upsert_party(client.id, entry)
-                created[n] = entry
-            st.success(
-                f"Registered {len(with_tin)} B2B customer(s) from the sales file. "
-                "Download the new-parties CSV below and upload it to Digitax before the invoices."
-            )
-            st.rerun()
-        st.caption("Only customers whose TIN is in the sales file are added; review individually below to set "
-                   "email/address. The new-parties file is gated behind the same 'uploaded to Digitax' "
-                   "confirmation as items.")
+        st.markdown(f"#### ✅ With a TIN from the sales file ({len(with_tin)}) — settle these as B2B")
+        _party_table("withtin", with_tin, hints, store, client, dropdowns, default_approve=True)
 
-    state_opts = [""] + [f"{n}  ({c})" for n, c in reference.states()]
-    state_code_by_label = {f"{n}  ({c})": c for n, c in reference.states()}
+    if without_tin:
+        with st.expander(f"Other customers without a TIN ({len(without_tin)}) — B2C unless you add a TIN"):
+            _party_table("notin", without_tin, hints, store, client, dropdowns, default_approve=False)
 
-    for i, name in enumerate(unknown_custs):
-        tin_hint, addr = hints.get(name, ("", ""))
-        prop = propose_party(name, tin_hint=tin_hint, address_text=addr)
-        k = f"{_run_key()}_{i}"
-        title = name + ("   · TIN from sales ✓" if tin_hint else "")
-        with st.expander(title):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.selectbox("Status", ["B2B", "B2C"], index=0 if tin_hint else 1, key=f"pst_{k}")
-                st.text_input("TIN", value=prop.tin, key=f"ptin_{k}")
-                st.text_input("Email address", value=prop.email_address, key=f"pem_{k}")
-                st.text_input("Phone (optional)", key=f"pph_{k}")
-            with c2:
-                st.text_input("Street", value=addr, key=f"pstr_{k}")
-                st.text_input("City", key=f"pcity_{k}")
-                st.text_input("Postal zone", key=f"ppz_{k}")
-            # State -> dependent LGA dropdowns.
-            pre_state_label = next((lbl for lbl, c in state_code_by_label.items() if c == prop.state), "")
-            s_idx = state_opts.index(pre_state_label) if pre_state_label in state_opts else 0
-            state_label = st.selectbox("State", state_opts, index=s_idx, key=f"pstate_{k}")
-            sc = state_code_by_label.get(state_label, "")
-            lga_pairs = reference.lgas_for_state(sc) if sc else []
-            lga_opts = [""] + [f"{n}  ({code})" for n, code in lga_pairs]
-            lga_code_by_label = {f"{n}  ({code})": code for n, code in lga_pairs}
-            pre_lga_label = next((lbl for lbl, c in lga_code_by_label.items() if c == prop.local_government), "")
-            l_idx = lga_opts.index(pre_lga_label) if pre_lga_label in lga_opts else 0
-            st.selectbox("LGA (local_government)", lga_opts, index=l_idx, key=f"plga_{k}")
 
-    if st.button("Approve customers", key=f"approveparties_{_run_key()}"):
+def _party_table(group: str, names, hints, store, client, dropdowns, default_approve: bool) -> None:
+    state_opts, s_label2code, s_code2label, lga_opts, l_label2code, l_code2label = dropdowns
+    rows = []
+    for n in names:
+        tin_hint, addr = hints.get(n, ("", ""))
+        prop = propose_party(n, tin_hint=tin_hint, address_text=addr)
+        rows.append({
+            "approve": default_approve, "name": n, "tin": prop.tin, "email_address": "",
+            "street_name": addr, "city_name": "", "postal_zone": "",
+            "state": s_code2label.get(prop.state, ""),
+            "local_government": l_code2label.get(prop.local_government, ""),
+        })
+    df = pd.DataFrame(rows)
+    st.caption("Tip: type in the **state** / **LGA** cells to filter the list — no scrolling. "
+               "A blank TIN saves the customer as B2C.")
+    edited = st.data_editor(
+        df, hide_index=True, use_container_width=True, key=f"pt_{group}_{_run_key()}",
+        disabled=["name"],
+        column_config={
+            "approve": st.column_config.CheckboxColumn("✓"),
+            "state": st.column_config.SelectboxColumn("state", options=[""] + state_opts),
+            "local_government": st.column_config.SelectboxColumn("LGA", options=[""] + lga_opts),
+        },
+    )
+    if st.button("Approve these customers", key=f"ptbtn_{group}_{_run_key()}"):
         created = _bucket("created_parties")
-        n_b2b = n_b2c = skipped = 0
-        for i, name in enumerate(unknown_custs):
-            k = f"{_run_key()}_{i}"
-            status = st.session_state.get(f"pst_{k}", "B2C")
-            tin = str(st.session_state.get(f"ptin_{k}", "")).strip()
-            state_label = st.session_state.get(f"pstate_{k}", "")
-            sc = state_code_by_label.get(state_label, "")
-            lga_label = st.session_state.get(f"plga_{k}", "")
-            lga_pairs = reference.lgas_for_state(sc) if sc else []
-            lga_code = {f"{n}  ({code})": code for n, code in lga_pairs}.get(lga_label, "")
-            # B2B needs a real TIN; never fabricated. B2B-without-TIN -> skip.
-            if status == "B2B" and not tin:
-                skipped += 1
+        n_b2b = n_b2c = mismatch = 0
+        for _, r in edited.iterrows():
+            if not bool(r.get("approve", False)):
                 continue
+            tin = str(r.get("tin", "")).strip()
+            sc = s_label2code.get(str(r.get("state", "")), "")
+            lc = l_label2code.get(str(r.get("local_government", "")), "")
+            # Guard against an LGA picked from a different state than chosen.
+            if lc and sc and not lc.startswith(sc):
+                mismatch += 1
+                lc = ""
+            status = "B2B" if tin else "B2C"  # never fabricate a TIN
             entry = PartyEntry(
-                name=name, tin=tin, status=status,
-                email_address=str(st.session_state.get(f"pem_{k}", "")).strip(),
-                phone_number=str(st.session_state.get(f"pph_{k}", "")).strip(),
-                street_name=str(st.session_state.get(f"pstr_{k}", "")).strip(),
-                city_name=str(st.session_state.get(f"pcity_{k}", "")).strip(),
-                postal_zone=str(st.session_state.get(f"ppz_{k}", "")).strip(),
-                country="NGA", local_government=lga_code, state=sc)
+                name=str(r["name"]), tin=tin, status=status,
+                email_address=str(r.get("email_address", "")).strip(),
+                street_name=str(r.get("street_name", "")).strip(),
+                city_name=str(r.get("city_name", "")).strip(),
+                postal_zone=str(r.get("postal_zone", "")).strip(),
+                country="NGA", local_government=lc, state=sc)
             store.upsert_party(client.id, entry)
             if status == "B2B":
-                created[name] = entry
+                created[entry.name] = entry
                 n_b2b += 1
             else:
                 n_b2c += 1
         msg = f"Saved {n_b2b} B2B and {n_b2c} B2C customer(s)."
-        if skipped:
-            msg += f" ⚠️ {skipped} marked B2B but had no TIN — skipped (TINs are never invented)."
+        if mismatch:
+            msg += f" ⚠️ {mismatch} LGA(s) didn't match the chosen state — cleared, please re-pick."
         st.success(msg)
         st.rerun()
 
