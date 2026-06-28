@@ -73,6 +73,35 @@ set for daily use.
 
 ---
 
+## Multiple users, each seeing only their client
+
+Run `python scripts/make_login.py` and create one account per person:
+
+- **admin** (you) — sees every client, plus Master data and Clients & settings.
+- **rep** — sees only the client id(s) you assign, and just the Convert + How-to
+  pages. A rep cannot see or pick another client.
+
+Paste the printed `RABBI_USERS = '...'` line into **Manage app → Settings →
+Secrets**. Example:
+
+```
+RABBI_USERS = '{"subomi": {"password": "<hash>", "role": "admin"}, "geeta_rep": {"password": "<hash>", "role": "rep", "clients": ["geeta"]}}'
+```
+
+Everyone shares the same database (Part 2), so masters that any rep adds are
+immediately available to you and persist. (This is UI-level separation suitable
+for an internal tool — all accounts use the same database; it is not a hard
+security boundary between tenants.)
+
+## Seeding masters once (then they self-maintain)
+
+As **admin**, go to **Master data** and import each client's existing item and
+party sheets **one time**. After that you never re-upload: every new item or
+customer resolved during a run is appended to the master in the database and is
+there for the next run and the next user — a live register. (Without the
+database from Part 2 the masters reset on restart, which is why you've been
+re-uploading.)
+
 ## Day-to-day, once it's live
 
 1. Open your app link and sign in.

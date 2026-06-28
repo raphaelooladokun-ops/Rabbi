@@ -32,7 +32,7 @@ from core.proposals import propose_items, propose_party, run_period
 from core.reference import invoice_type_label, is_valid_hsn, is_valid_service_code
 from core.readers import get_reader
 from core.store import get_master_store
-from ui.auth import login_gate, logout_button
+from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_button
 
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
@@ -704,28 +704,84 @@ def render_settings(store: MasterStore) -> None:
 
 
 # ---------------------------------------------------------------------------
+# How-to page
+# ---------------------------------------------------------------------------
+def render_howto(is_admin_user: bool) -> None:
+    st.header("How to use this app")
+    st.markdown(
+        """
+**Each run takes a few minutes:**
+
+1. **Pick your client** in the sidebar (you only see the clients assigned to you).
+2. Go to **Convert** and **upload the client's raw sales file** (`.xlsx`/`.xls`).
+3. The app processes it and shows two things:
+   - invoices that are **ready**, and
+   - a list of **lines needing attention**.
+4. **Create missing masters** (only if something is flagged):
+   - **Items** — confirm the *possible duplicates* (they map to an item Digitax
+     already knows), and for genuinely new items check the drafted **HSN /
+     category** and approve. New items get the next code automatically.
+   - **Customers** — for any **B2B** customer fill **TIN + email + address**,
+     then pick the **State** (the **LGA** list narrows to that state) and
+     approve. Customers with no TIN stay **B2C** — that's fine.
+5. **Download & upload in order:**
+   - If new items/customers were created, download those CSVs first and
+     **upload them to Digitax**, then tick **"Done — I've uploaded these."**
+   - Then download the **invoices CSV** and upload it to Digitax.
+6. You're done. Anything you added is **remembered** for next time.
+
+**Tips**
+- A blank/"NOT APPLICABLE" TIN is treated as B2C — never invented.
+- The *source_rows* column in the exceptions list points to the exact row in
+  your original sheet, if you'd rather fix something there.
+- Your additions are saved to the shared master, so the next person sees them.
+"""
+    )
+    if is_admin_user:
+        st.info(
+            "**Admin only:** seed each client's item & party masters once under **Master data** "
+            "(import your existing sheets). After that they grow automatically as items/customers "
+            "are resolved. Manage logins, tax rates and invoice_type_code under **Clients & settings**."
+        )
+
+
+# ---------------------------------------------------------------------------
 def main() -> None:
     if not login_gate():
         return
     logout_button()
     store = get_store()
 
+    admin = is_admin()
+    allowed = allowed_clients()
     clients = store.list_clients()
+    if allowed != ALL_CLIENTS:
+        allowed_set = set(allowed or [])
+        clients = [c for c in clients if c.id in allowed_set]
+
+    pages = ["Convert", "How-to"] if not admin else ["Convert", "Master data", "Clients & settings", "How-to"]
     with st.sidebar:
         st.header("Rabbi Consult")
-        page = st.radio("Page", ["Convert", "Master data", "Clients & settings"])
+        page = st.radio("Page", pages)
         client = None
         if page in ("Convert", "Master data"):
-            options = {c.name: c for c in clients}
-            choice = st.selectbox("Client", list(options.keys()))
-            client = options[choice]
+            if not clients:
+                st.warning("No clients are assigned to your account. Ask an admin.")
+            else:
+                options = {c.name: c for c in clients}
+                choice = st.selectbox("Client", list(options.keys()))
+                client = options[choice]
 
     if page == "Convert":
-        render_convert(store, client)
+        if client:
+            render_convert(store, client)
     elif page == "Master data":
-        render_masters(store, client)
-    else:
+        if client:
+            render_masters(store, client)
+    elif page == "Clients & settings":
         render_settings(store)
+    else:
+        render_howto(admin)
 
 
 if __name__ == "__main__":
