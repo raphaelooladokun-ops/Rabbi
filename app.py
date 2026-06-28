@@ -340,9 +340,29 @@ def _render_staged_output(client: ClientConfig, result: ProcessResult) -> None:
         st.caption("New items/customers uploaded ✓ — their codes and TINs are already embedded below.")
 
     ready = result.ready_invoices
+    flagged = result.blocking_invoices
     itc = client.invoice_type_code
+    total = len(result.invoices)
+
+    # Everything resolved -> one file, no confusing second button.
+    if not flagged:
+        st.success(f"All {total} invoices are ready to upload to Digitax.")
+        st.download_button(
+            f"⬇️ {slug}_invoices_{period}.csv  ({total} invoices)",
+            data=write_csv_bytes(result.invoices, only_ready=True, invoice_type_code=itc),
+            file_name=f"{slug}_invoices_{period}.csv", mime="text/csv", type="primary",
+        )
+        return
+
+    # Some invoices still have unresolved issues -> two clearly-labelled files.
+    st.warning(
+        f"**{len(ready)} of {total} invoices are ready.** The other {len(flagged)} still have "
+        "unresolved issues (see **Lines needing attention** above) — resolve them, or fix the "
+        "second file in Excel."
+    )
     col1, col2 = st.columns(2)
     with col1:
+        st.markdown("**Ready only** — safe to upload now.")
         if ready:
             st.download_button(
                 f"⬇️ {slug}_invoices_{period}.csv  ({len(ready)} ready)",
@@ -353,8 +373,9 @@ def _render_staged_output(client: ClientConfig, result: ProcessResult) -> None:
         else:
             st.caption("No fully-ready invoices yet.")
     with col2:
+        st.markdown(f"**All {total}** — the {len(flagged)} flagged have blanks to fix in Excel.")
         st.download_button(
-            f"⬇️ All invoices incl. flagged ({len(result.invoices)})",
+            f"⬇️ {slug}_invoices_all_{period}.csv  ({total})",
             data=write_csv_bytes(result.invoices, only_ready=False, invoice_type_code=itc),
             file_name=f"{slug}_invoices_all_{period}.csv", mime="text/csv",
             use_container_width=True,
