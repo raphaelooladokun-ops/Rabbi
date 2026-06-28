@@ -8,6 +8,7 @@ silently guesses anything that affects a tax filing.
 """
 from __future__ import annotations
 
+import copy
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -109,7 +110,14 @@ class ProcessResult:
 
 # ---------------------------------------------------------------------------
 def process(rows: list[LineRow], client: ClientConfig, store: MasterStore) -> ProcessResult:
-    """Resolve, validate and reconcile reader output into invoice summaries."""
+    """Resolve, validate and reconcile reader output into invoice summaries.
+
+    Works on deep copies of the input rows so it is side-effect-free and
+    repeatable: callers (the UI) keep the pristine reader output and re-run
+    this every time the masters change, without engine flags accumulating on
+    the originals. Reader-provided flags on the rows are preserved.
+    """
+    rows = copy.deepcopy(rows)
     for row in rows:
         _resolve_item(row, client, store)
         _resolve_party(row, client, store)

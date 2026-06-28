@@ -43,6 +43,25 @@ def test_reconciliation_matches_pre_vat_subtotal(store, geeta_client):
     assert inv1.stated_includes_vat is False
 
 
+def test_process_is_repeatable_and_reflects_master_changes(store, geeta_client):
+    # The UI re-runs process() on the SAME row objects every interaction.
+    # It must not accumulate stale flags, and must pick up master additions.
+    rows = get_reader("geeta").read(make_tally_xlsx()).rows
+    store.seed_items("geeta", [ItemEntry(name="Rice 50kg", item_code="ITM_001", tax_category="STANDARD_VAT")])
+
+    r1 = process(rows, geeta_client, store)
+    process(rows, geeta_client, store)  # extra reruns must not change anything
+    r2 = process(rows, geeta_client, store)
+    assert len(r2.blocking_invoices) == len(r1.blocking_invoices)  # no accumulation
+    assert FlagCode.ITEM_NOT_FOUND in _codes(r2.invoices)  # 'Bread' still unknown
+
+    # Add the missing item, re-run on the SAME rows -> it must clear.
+    store.upsert_item("geeta", ItemEntry(name="Bread", item_code="ITM_002", tax_category="EXEMPT"))
+    r3 = process(rows, geeta_client, store)
+    assert FlagCode.ITEM_NOT_FOUND not in _codes(r3.invoices)
+    assert len(r3.blocking_invoices) == 0
+
+
 def test_unknown_item_flags_error(store, geeta_client):
     store.seed_items("geeta", [ItemEntry(name="Bread", item_code="ITM_002", tax_category="EXEMPT")])
     rows = get_reader("geeta").read(make_tally_xlsx()).rows
