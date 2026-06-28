@@ -24,6 +24,7 @@ from core.output import (
     write_items_template,
     write_parties_template,
 )
+from core.digitax_resources import TAX_CATEGORY_CODES
 from core.proposals import propose_items, propose_party, run_period
 from core.readers import get_reader
 from core.store import get_master_store
@@ -154,9 +155,18 @@ def _render_create_masters(store: MasterStore, client: ClientConfig, result: Pro
         _render_party_proposals(store, client, result, unknown_custs)
 
 
+def _tax_category_options(store: MasterStore) -> list[str]:
+    """Official Digitax category codes, plus any extra already in this store."""
+    opts = list(TAX_CATEGORY_CODES)
+    for c in store.tax_rates().keys():
+        if c not in opts:
+            opts.append(c)
+    return opts
+
+
 def _render_item_proposals(store: MasterStore, client: ClientConfig, unknown_items: list[str]) -> None:
     items_master = store.list_items(client.id)
-    tax_categories = list(store.tax_rates().keys())
+    tax_categories = _tax_category_options(store)
     force_new = list(_bucket("not_a_match").keys())
     proposals = propose_items(unknown_items, items_master, force_new=force_new)
     matches = [p for p in proposals if p.kind == "possible_match"]

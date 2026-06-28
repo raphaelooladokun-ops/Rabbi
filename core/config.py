@@ -12,15 +12,14 @@ from decimal import Decimal
 INVOICE_TYPE_CODE = "388"  # commercial invoice
 DOCUMENT_CURRENCY_CODE = "NGN"
 
-# Default tax-category -> VAT rate map. NOT hardcoded at the line level: the
-# rate is always looked up from the item's category here, and operators can
-# extend this through the masters config. Reader B/C may instead carry an
-# explicit per-line rate straight from the source file.
-DEFAULT_TAX_RATES: dict[str, Decimal] = {
-    "STANDARD_VAT": Decimal("0.075"),
-    "EXEMPT": Decimal("0"),
-    "ZERO_RATED": Decimal("0"),
-}
+# Default tax-category -> VAT rate map, from the official Digitax tax-category
+# reference (plus backward-compatible aliases). NOT hardcoded at the line
+# level: the rate is always looked up from the item's category here, and
+# operators can extend this through the masters config. Reader B/C may instead
+# carry an explicit per-line rate straight from the source file.
+from .digitax_resources import TAX_CATEGORY_ALIASES, TAX_CATEGORY_RATES  # noqa: E402
+
+DEFAULT_TAX_RATES: dict[str, Decimal] = {**TAX_CATEGORY_RATES, **TAX_CATEGORY_ALIASES}
 
 # Exact Digitax CSV header, in order. "(optional)" annotations from the brief
 # are dropped — these are the literal column names written to the file.
