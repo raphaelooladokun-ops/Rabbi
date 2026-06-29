@@ -32,16 +32,64 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^0-9a-z]+", " ", str(text).lower())).strip()
 
 
-def fuzzy_best_item(name: str, items: list[ItemEntry]) -> tuple[Optional[ItemEntry], float]:
-    """Return the closest existing item and its similarity score (0..1)."""
-    target = _norm(name)
+def _best_match(target: str, norm_items, sm: SequenceMatcher) -> tuple[Optional[ItemEntry], float]:
+    """Closest item to a pre-normalised ``target`` over pre-normalised items.
+
+    Uses difflib's cheap upper-bound gates (real_quick_ratio/quick_ratio) to
+    skip the expensive ratio() for items that can't beat the current best —
+    the same strategy as get_close_matches. Critical when the master is large
+    (e.g. 8,000+ items), where the naive O(n) full-ratio scan takes seconds.
+    """
+    if not target:
+        return None, 0.0
+    sm.set_seq2(target)
     best: Optional[ItemEntry] = None
     best_score = 0.0
-    for e in items:
-        score = SequenceMatcher(None, target, _norm(e.name)).ratio()
+    for cand, entry in norm_items:
+        if not cand:
+            continue
+        sm.set_seq1(cand)
+        if sm.real_quick_ratio() <= best_score or sm.quick_ratio() <= best_score:
+            continue
+        score = sm.ratio()
         if score > best_score:
-            best, best_score = e, score
+            best, best_score = entry, score
     return best, best_score
+
+
+def _build_token_index(norm_items) -> dict[str, list]:
+    """word -> [(norm_name, entry), ...] so we only compare items that share a
+    word with the unknown (a real fuzzy match always shares at least one)."""
+    idx: dict[str, list] = {}
+    for cand, entry in norm_items:
+        for tok in set(cand.split()):
+            if len(tok) >= 2:
+                idx.setdefault(tok, []).append((cand, entry))
+    return idx
+
+
+def _candidates(target: str, token_index: dict[str, list], cap: int = 1500) -> list:
+    """Items sharing a word with ``target`` (rarest words first, capped)."""
+    seen: set[int] = set()
+    out: list = []
+    tokens = sorted({t for t in target.split() if len(t) >= 2},
+                    key=lambda t: len(token_index.get(t, ())))
+    for tok in tokens:
+        for cand, entry in token_index.get(tok, ()):
+            if id(entry) not in seen:
+                seen.add(id(entry))
+                out.append((cand, entry))
+        if len(out) >= cap:
+            break
+    return out
+
+
+def fuzzy_best_item(name: str, items: list[ItemEntry]) -> tuple[Optional[ItemEntry], float]:
+    """Return the closest existing item and its similarity score (0..1)."""
+    norm_items = [(_norm(e.name), e) for e in items]
+    target = _norm(name)
+    cands = _candidates(target, _build_token_index(norm_items)) or norm_items
+    return _best_match(target, cands, SequenceMatcher())
 
 
 _CODE_RE = re.compile(r"^(.*?)(\d+)\s*$")
@@ -119,10 +167,17 @@ def propose_items(
     default_tax = _most_common(e.tax_category for e in items) or "STANDARD_VAT"
     forced = {_norm(n) for n in force_new}
 
+    # Normalise the master once, build a word index, reuse one matcher — so
+    # each unknown only compares against items sharing a word (fast at 8k+).
+    norm_items = [(_norm(e.name), e) for e in items]
+    token_index = _build_token_index(norm_items)
+    sm = SequenceMatcher()
+
     proposals: list[ItemProposal] = []
     new_items: list[tuple[str, Optional[ItemEntry]]] = []
     for name in names:
-        match, score = fuzzy_best_item(name, items)
+        target = _norm(name)
+        match, score = _best_match(target, _candidates(target, token_index), sm)
         if _norm(name) not in forced and match and score >= fuzzy_threshold:
             proposals.append(ItemProposal(
                 name=name, kind="possible_match",
