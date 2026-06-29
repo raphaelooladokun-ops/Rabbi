@@ -93,6 +93,7 @@ class SqlMasterStore:
         # every render. Invalidated on writes to that client.
         self._items_cache: dict[str, tuple] = {}
         self._parties_cache: dict[str, tuple] = {}
+        self._tax_cache: Optional[dict] = None
 
     # -- clients -----------------------------------------------------------
     def list_clients(self) -> list[ClientConfig]:
@@ -124,11 +125,14 @@ class SqlMasterStore:
 
     # -- tax rates ---------------------------------------------------------
     def tax_rates(self) -> dict[str, Decimal]:
-        with self.engine.connect() as conn:
-            rows = conn.execute(select(tax_rates_t)).mappings().all()
-        if not rows:
-            return dict(DEFAULT_TAX_RATES)
-        return {r["category"]: Decimal(str(r["rate"])) for r in rows}
+        # Cached: Tally clients (Geeta/Goldcoin) call tax_rate_for() once per
+        # line, which would otherwise be a Neon query per invoice line.
+        if self._tax_cache is None:
+            with self.engine.connect() as conn:
+                rows = conn.execute(select(tax_rates_t)).mappings().all()
+            self._tax_cache = (dict(DEFAULT_TAX_RATES) if not rows
+                               else {r["category"]: Decimal(str(r["rate"])) for r in rows})
+        return self._tax_cache
 
     def save_tax_rates(self, rates: dict[str, Decimal]) -> None:
         with self.engine.begin() as conn:
@@ -138,6 +142,7 @@ class SqlMasterStore:
                     tax_rates_t.insert(),
                     [{"category": k, "rate": str(v)} for k, v in rates.items()],
                 )
+        self._tax_cache = None
 
     def tax_rate_for(self, category: Optional[str]) -> Optional[Decimal]:
         if not category:
