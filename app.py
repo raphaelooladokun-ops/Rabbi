@@ -139,7 +139,13 @@ def _render_exceptions(result: ProcessResult) -> None:
         "Resolve these below (Create missing masters), or fix them directly in the downloaded "
         "invoices file — the *source_rows* column points to the row in your original sheet."
     )
-    st.dataframe(pd.DataFrame(report), use_container_width=True, hide_index=True)
+    df = pd.DataFrame(report)
+    preview = 200
+    if len(df) > preview:
+        st.caption(f"Showing the first {preview} of {len(df)} — download the full list below.")
+        st.dataframe(df.head(preview), use_container_width=True, hide_index=True)
+    else:
+        st.dataframe(df, use_container_width=True, hide_index=True)
     st.download_button(
         "⬇️ Download this list (CSV)",
         data=write_exceptions_csv(result).encode("utf-8"),
@@ -218,14 +224,28 @@ def _render_item_proposals(store: MasterStore, client: ClientConfig, unknown_ite
     if new:
         st.markdown(f"**New items ({len(new)})** — HSN/category are **drafted from the closest "
                     "existing item** (verify the HSN), then approve.")
+        if len(new) > 60:
+            st.warning(
+                f"{len(new)} items aren't recognised. If **{client.name}** already has an items "
+                "list, import it under **Master data** first — that's far faster than approving "
+                "hundreds here. Otherwise approve them a page at a time below."
+            )
+        # Paginate so the editor never renders hundreds of rows at once.
+        page_size = 50
+        pages = (len(new) + page_size - 1) // page_size
+        page = 1
+        if pages > 1:
+            page = st.number_input(f"Page (1–{pages}, {page_size} per page)", 1, pages, 1,
+                                   key=f"newitems_page_{_run_key()}")
+        chunk = new[(page - 1) * page_size: page * page_size]
         ndf = pd.DataFrame([
             {"name": p.name, "item_code": p.item_code, "item_category": p.item_category,
              "hsn_code": p.hsn_code, "description": p.description,
              "tax_category_code": p.tax_category_code, "is_service": p.is_service}
-            for p in new
+            for p in chunk
         ])
         edited = st.data_editor(
-            ndf, hide_index=True, use_container_width=True, key=f"newitems_{_run_key()}",
+            ndf, hide_index=True, use_container_width=True, key=f"newitems_{_run_key()}_{page}",
             disabled=["name", "item_code"],
             column_config={
                 "tax_category_code": st.column_config.SelectboxColumn(options=tax_categories),
@@ -233,7 +253,7 @@ def _render_item_proposals(store: MasterStore, client: ClientConfig, unknown_ite
             },
         )
         st.caption("HSN codes are validated against the Digitax HSN reference; unknown ones are flagged but not blocked.")
-        if st.button("Approve new items", key=f"approveitems_{_run_key()}"):
+        if st.button(f"Approve new items on this page ({len(chunk)})", key=f"approveitems_{_run_key()}_{page}"):
             created = _bucket("created_items")
             missing_hsn = bad_hsn = 0
             for _, r in edited.iterrows():
@@ -310,14 +330,24 @@ def _party_grid_body(group: str, names, hints, store, client, default_approve: b
     s_label2code = {f"{n} ({c})": c for n, c in state_pairs}
     s_code2label = {c: f"{n} ({c})" for n, c in state_pairs}
 
+    # Paginate so the grid never renders hundreds of widget-rows at once.
+    page_size = 25
+    pages = (len(names) + page_size - 1) // page_size
+    page = 1
+    if pages > 1:
+        page = st.number_input(f"Page (1–{pages}, {page_size} per page)", 1, pages, 1,
+                               key=f"pg_{group}_{_run_key()}")
+    start = (page - 1) * page_size
+    page_rows = list(enumerate(names))[start:start + page_size]  # (global index, name)
+
     header = st.columns(_GRID_RATIOS)
     for col, h in zip(header, _GRID_HEADERS):
         col.markdown(f"**{h}**")
 
-    for i, name in enumerate(names):
+    for i, name in page_rows:
         tin_hint, addr = hints.get(name, ("", ""))
         prop = propose_party(name, tin_hint=tin_hint, address_text=addr)
-        k = f"{group}_{_run_key()}_{i}"
+        k = f"{group}_{_run_key()}_{i}"  # global index -> stable key across pages
         c = st.columns(_GRID_RATIOS)
         c[0].checkbox("a", value=default_approve, key=f"ap_{k}", label_visibility="collapsed")
         c[1].markdown(name)
@@ -339,10 +369,11 @@ def _party_grid_body(group: str, names, hints, store, client, default_approve: b
         l_idx = lga_opts.index(pre_lga) if pre_lga in lga_opts else 0
         c[8].selectbox("lg", lga_opts, index=l_idx, key=f"lga_{k}", label_visibility="collapsed")
 
-    if st.button("Approve these customers", key=f"gridbtn_{group}_{_run_key()}"):
+    if st.button(f"Approve customers on this page ({len(page_rows)})",
+                 key=f"gridbtn_{group}_{_run_key()}_{page}"):
         created = _bucket("created_parties")
         n_b2b = n_b2c = incomplete = junk_tin = 0
-        for i, name in enumerate(names):
+        for i, name in page_rows:
             k = f"{group}_{_run_key()}_{i}"
             if not st.session_state.get(f"ap_{k}"):
                 continue
