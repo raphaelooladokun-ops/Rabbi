@@ -39,7 +39,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.06.29-cols"
+APP_VERSION = "v2026.06.29-clear"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -631,6 +631,16 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
                            + (f" ⚠️ {missing_code} have no item_code." if missing_code else ""))
                 st.rerun()
 
+        st.divider()
+        with st.expander(f"⚠️ Clear items master ({len(items)} items) — start afresh"):
+            st.warning(f"Permanently deletes **all {len(items)} items** for {client.name}. "
+                       "Download a backup first (Clients & settings → Backup).")
+            if st.checkbox("Yes, delete all items for this client", key=f"confirm_clear_items_{client.id}"):
+                if st.button("🗑 Clear items master now", key=f"clear_items_{client.id}", type="primary"):
+                    store.seed_items(client.id, [])
+                    st.success("Items master cleared.")
+                    st.rerun()
+
     with parties_tab:
         st.caption("Maps each customer name to a TIN and B2B/B2C status.")
         parties = store.list_parties(client.id)
@@ -686,6 +696,16 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
                 store.seed_parties(client.id, entries)
                 st.success(f"Imported {len(entries)} parties.")
                 st.rerun()
+
+        st.divider()
+        with st.expander(f"⚠️ Clear parties master ({len(parties)} customers) — start afresh"):
+            st.warning(f"Permanently deletes **all {len(parties)} customers** for {client.name}. "
+                       "Download a backup first (Clients & settings → Backup).")
+            if st.checkbox("Yes, delete all customers for this client", key=f"confirm_clear_parties_{client.id}"):
+                if st.button("🗑 Clear parties master now", key=f"clear_parties_{client.id}", type="primary"):
+                    store.seed_parties(client.id, [])
+                    st.success("Parties master cleared.")
+                    st.rerun()
 
 
 # ---------------------------------------------------------------------------
