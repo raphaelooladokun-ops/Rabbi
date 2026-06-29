@@ -88,6 +88,11 @@ class SqlMasterStore:
         # pool_pre_ping keeps connections healthy across a host's idle naps.
         self.engine: Engine = create_engine(database_url, pool_pre_ping=True, future=True)
         _metadata.create_all(self.engine)
+        # In-memory per-client caches so the engine doesn't hit the database
+        # once per invoice line (900+ round-trips) or re-fetch an 8k master on
+        # every render. Invalidated on writes to that client.
+        self._items_cache: dict[str, tuple] = {}
+        self._parties_cache: dict[str, tuple] = {}
 
     # -- clients -----------------------------------------------------------
     def list_clients(self) -> list[ClientConfig]:
@@ -156,31 +161,36 @@ class SqlMasterStore:
         d["name_key"] = normalize_key(e.name)
         return d
 
-    def list_items(self, client_id: str) -> list[ItemEntry]:
+    def _items_indexed(self, client_id: str) -> tuple[list[ItemEntry], dict, dict]:
+        """(items, name_index, hsn_index), fetched from the DB once and cached
+        in memory until this client's items change."""
+        cached = self._items_cache.get(client_id)
+        if cached is not None:
+            return cached
         with self.engine.connect() as conn:
             rows = conn.execute(
                 select(items_t).where(items_t.c.client_id == client_id).order_by(items_t.c.item_code)
             ).mappings().all()
-        return [self._item_from_row(r) for r in rows]
+        items = [self._item_from_row(r) for r in rows]
+        name_idx = {normalize_key(e.name): e for e in items}
+        hsn_idx: dict = {}
+        for e in items:
+            if e.hsn_code:
+                hsn_idx.setdefault(normalize_key(e.hsn_code), e)
+        self._items_cache[client_id] = (items, name_idx, hsn_idx)
+        return items, name_idx, hsn_idx
+
+    def list_items(self, client_id: str) -> list[ItemEntry]:
+        return list(self._items_indexed(client_id)[0])
 
     def lookup_item(self, client_id: str, *, name: str = "", hsn: str = "") -> Optional[ItemEntry]:
+        _, name_idx, hsn_idx = self._items_indexed(client_id)
         name_key = normalize_key(name)
-        with self.engine.connect() as conn:
-            if name_key:
-                r = conn.execute(
-                    select(items_t).where(
-                        items_t.c.client_id == client_id, items_t.c.name_key == name_key
-                    )
-                ).mappings().first()
-                if r:
-                    return self._item_from_row(r)
-            hsn_key = normalize_key(hsn)
-            if hsn_key:
-                for r in conn.execute(
-                    select(items_t).where(items_t.c.client_id == client_id)
-                ).mappings():
-                    if r["hsn_code"] and normalize_key(r["hsn_code"]) == hsn_key:
-                        return self._item_from_row(r)
+        if name_key and name_key in name_idx:
+            return name_idx[name_key]
+        hsn_key = normalize_key(hsn)
+        if hsn_key and hsn_key in hsn_idx:
+            return hsn_idx[hsn_key]
         return None
 
     def upsert_item(self, client_id: str, entry: ItemEntry) -> None:
@@ -189,6 +199,7 @@ class SqlMasterStore:
             conn.execute(delete(items_t).where(
                 items_t.c.client_id == client_id, items_t.c.name_key == key))
             conn.execute(items_t.insert().values(**self._item_values(client_id, entry)))
+        self._items_cache.pop(client_id, None)
 
     def seed_items(self, client_id: str, entries: list[ItemEntry]) -> None:
         # De-duplicate by normalised name (last one wins), matching file store.
@@ -197,6 +208,7 @@ class SqlMasterStore:
             conn.execute(delete(items_t).where(items_t.c.client_id == client_id))
             if unique:
                 conn.execute(items_t.insert(), [self._item_values(client_id, e) for e in unique.values()])
+        self._items_cache.pop(client_id, None)
 
     # -- parties -----------------------------------------------------------
     @staticmethod
@@ -216,23 +228,27 @@ class SqlMasterStore:
         d["name_key"] = normalize_key(e.name)
         return d
 
-    def list_parties(self, client_id: str) -> list[PartyEntry]:
+    def _parties_indexed(self, client_id: str) -> tuple[list[PartyEntry], dict]:
+        cached = self._parties_cache.get(client_id)
+        if cached is not None:
+            return cached
         with self.engine.connect() as conn:
             rows = conn.execute(
                 select(parties_t).where(parties_t.c.client_id == client_id).order_by(parties_t.c.name)
             ).mappings().all()
-        return [self._party_from_row(r) for r in rows]
+        parties = [self._party_from_row(r) for r in rows]
+        name_idx = {normalize_key(e.name): e for e in parties}
+        self._parties_cache[client_id] = (parties, name_idx)
+        return parties, name_idx
+
+    def list_parties(self, client_id: str) -> list[PartyEntry]:
+        return list(self._parties_indexed(client_id)[0])
 
     def lookup_party(self, client_id: str, name: str) -> Optional[PartyEntry]:
         key = normalize_key(name)
         if not key:
             return None
-        with self.engine.connect() as conn:
-            r = conn.execute(
-                select(parties_t).where(
-                    parties_t.c.client_id == client_id, parties_t.c.name_key == key)
-            ).mappings().first()
-        return self._party_from_row(r) if r else None
+        return self._parties_indexed(client_id)[1].get(key)
 
     def upsert_party(self, client_id: str, entry: PartyEntry) -> None:
         key = normalize_key(entry.name)
@@ -240,6 +256,7 @@ class SqlMasterStore:
             conn.execute(delete(parties_t).where(
                 parties_t.c.client_id == client_id, parties_t.c.name_key == key))
             conn.execute(parties_t.insert().values(**self._party_values(client_id, entry)))
+        self._parties_cache.pop(client_id, None)
 
     def seed_parties(self, client_id: str, entries: list[PartyEntry]) -> None:
         unique: dict[str, PartyEntry] = {normalize_key(e.name): e for e in entries}
@@ -247,3 +264,4 @@ class SqlMasterStore:
             conn.execute(delete(parties_t).where(parties_t.c.client_id == client_id))
             if unique:
                 conn.execute(parties_t.insert(), [self._party_values(client_id, e) for e in unique.values()])
+        self._parties_cache.pop(client_id, None)
