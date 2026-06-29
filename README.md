@@ -143,9 +143,11 @@ One row per item line, with exactly the columns Digitax expects (see
 (the Digitax invoice-type reference's code for "Commercial Invoice" — the
 reference is the source of truth; editable per client),
 `document_currency_code = NGN`, `unit_price` is VAT-exclusive, `tax_rate`
-carries the per-line VAT rate, `invoice_kind` is `B2B`/`B2C`. **Validate a
-processed run against a known-good Digitax CSV for the same period before going
-live.**
+carries the per-line VAT rate, `invoice_kind` is `B2B`/`B2C`. `invoice_date`
+and `issue_date` are stamped with the **processing date (today)** in
+`YYYY-MM-DD` — never the source invoice date — because Digitax does not allow
+backdating. **Validate a processed run against a known-good Digitax CSV before
+going live.**
 
 ## Running locally
 

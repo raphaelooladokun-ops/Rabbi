@@ -40,17 +40,25 @@ def _fmt_num(value: Optional[Decimal]) -> str:
     return format(d, "f")
 
 
-def _row_dict(iv: InvoiceSummary, line, invoice_type_code: str = INVOICE_TYPE_CODE) -> dict[str, str]:
+def _row_dict(
+    iv: InvoiceSummary,
+    line,
+    invoice_type_code: str = INVOICE_TYPE_CODE,
+    doc_date: Optional[date] = None,
+) -> dict[str, str]:
     party_tin = iv.party_tin if iv.invoice_kind == "B2B" else ""
     # Ready invoices always have a trader number. For the "all invoices"
     # export (which includes flagged ones) fall back to the truncated raw
     # number so the row is never blank; the operator fixes it in Excel.
     trader = iv.trader_invoice_number or iv.invoice_number_raw[:TRADER_INVOICE_NUMBER_MAX]
+    # Digitax does not allow backdating: every row carries the processing date
+    # (today), formatted YYYY-MM-DD — not the source invoice date.
+    today = (doc_date or date.today()).isoformat()
     return {
         "trader_invoice_number": trader,
         "invoice_type_code": invoice_type_code,
-        "invoice_date": _fmt_date(iv.invoice_date),
-        "issue_date": _fmt_date(iv.invoice_date),
+        "invoice_date": today,
+        "issue_date": today,
         "issue_time": "",
         "document_currency_code": DOCUMENT_CURRENCY_CODE,
         "party_tin": party_tin or "",
@@ -79,8 +87,14 @@ def write_csv(
     *,
     only_ready: bool = True,
     invoice_type_code: str = INVOICE_TYPE_CODE,
+    doc_date: Optional[date] = None,
 ) -> str:
-    """Render invoices to a Digitax CSV string."""
+    """Render invoices to a Digitax CSV string.
+
+    ``doc_date`` is the date stamped on every row (defaults to today, since
+    Digitax does not allow backdating).
+    """
+    doc_date = doc_date or date.today()
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=list(DIGITAX_COLUMNS), extrasaction="raise")
     writer.writeheader()
@@ -88,7 +102,7 @@ def write_csv(
         if only_ready and not iv.ready:
             continue
         for line in iv.lines:
-            writer.writerow(_row_dict(iv, line, invoice_type_code))
+            writer.writerow(_row_dict(iv, line, invoice_type_code, doc_date))
     return buf.getvalue()
 
 
@@ -97,8 +111,11 @@ def write_csv_bytes(
     *,
     only_ready: bool = True,
     invoice_type_code: str = INVOICE_TYPE_CODE,
+    doc_date: Optional[date] = None,
 ) -> bytes:
-    return write_csv(invoices, only_ready=only_ready, invoice_type_code=invoice_type_code).encode("utf-8")
+    return write_csv(
+        invoices, only_ready=only_ready, invoice_type_code=invoice_type_code, doc_date=doc_date
+    ).encode("utf-8")
 
 
 # --- Exceptions report -----------------------------------------------------

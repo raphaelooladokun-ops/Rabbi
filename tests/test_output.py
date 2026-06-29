@@ -49,6 +49,24 @@ def test_only_ready_invoices_written(store, geeta_client):
     assert "INV-002" in nums
 
 
+def test_output_dates_are_processing_date_not_source(store, geeta_client):
+    import re
+    from datetime import date
+    rows = get_reader("geeta").read(make_tally_xlsx()).rows  # source dates are 2026-04
+    result = process(rows, geeta_client, store)
+    records = list(csv.DictReader(io.StringIO(write_csv(result.invoices, doc_date=date(2026, 2, 2)))))
+    assert records, "expected at least one row"
+    for rec in records:
+        # No backdating: every row carries the processing date, YYYY-MM-DD.
+        assert rec["invoice_date"] == "2026-02-02"
+        assert rec["issue_date"] == "2026-02-02"
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", rec["invoice_date"])
+    # Default (no doc_date) stamps today.
+    today = date.today().isoformat()
+    recs2 = list(csv.DictReader(io.StringIO(write_csv(result.invoices))))
+    assert all(r["invoice_date"] == today for r in recs2)
+
+
 def test_all_export_includes_flagged_with_blank_item_code(store, geeta_client):
     from core.masters import ItemEntry
     store.seed_items("geeta", [ItemEntry(name="Rice 50kg", item_code="ITM_001", tax_category="STANDARD_VAT")])
