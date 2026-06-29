@@ -26,30 +26,33 @@ DEFAULT_TAX_RATES: dict[str, Decimal] = {**TAX_CATEGORY_RATES, **TAX_CATEGORY_AL
 
 # Exact Digitax CSV header, in order. "(optional)" annotations from the brief
 # are dropped — these are the literal column names written to the file.
+# Optional columns MUST keep the literal "(optional)" suffix — that is how
+# they appear in Digitax's own template, and its bulk upload rejects the file
+# ("Template mismatch / unrecognized columns") if the suffix is missing.
 DIGITAX_COLUMNS: tuple[str, ...] = (
     "trader_invoice_number",
     "invoice_type_code",
     "invoice_date",
     "issue_date",
-    "issue_time",
+    "issue_time(optional)",
     "document_currency_code",
-    "party_tin",
-    "notes",
-    "tax_point_date",
-    "due_date",
-    "accounting_cost",
-    "payee_party_tin",
-    "bill_party_tin",
-    "ship_party_tin",
-    "tax_representative_party_tin",
+    "party_tin(optional)",
+    "notes(optional)",
+    "tax_point_date(optional)",
+    "due_date(optional)",
+    "accounting_cost(optional)",
+    "payee_party_tin(optional)",
+    "bill_party_tin(optional)",
+    "ship_party_tin(optional)",
+    "tax_representative_party_tin(optional)",
     "item_code",
     "quantity",
     "unit_price",
-    "discount_rate",
-    "fee_rate",
+    "discount_rate(optional)",
+    "fee_rate(optional)",
     "tax_rate",
-    "callback_url",
-    "payment_terms_note",
+    "callback_url(optional)",
+    "payment_terms_note(optional)",
     "invoice_kind",
 )
 

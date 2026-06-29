@@ -17,6 +17,21 @@ def test_csv_header_matches_digitax_exactly(store, geeta_client):
     assert tuple(header) == DIGITAX_COLUMNS
 
 
+def test_optional_columns_keep_the_optional_suffix():
+    # Digitax bulk upload rejects optional columns without the "(optional)"
+    # suffix. Lock the exact header so this can't regress.
+    assert "party_tin(optional)" in DIGITAX_COLUMNS
+    assert "issue_time(optional)" in DIGITAX_COLUMNS
+    assert "discount_rate(optional)" in DIGITAX_COLUMNS
+    assert "payment_terms_note(optional)" in DIGITAX_COLUMNS
+    # Required columns must NOT carry the suffix.
+    for required in ("trader_invoice_number", "invoice_type_code", "invoice_date",
+                     "issue_date", "document_currency_code", "item_code",
+                     "quantity", "unit_price", "tax_rate", "invoice_kind"):
+        assert required in DIGITAX_COLUMNS
+        assert f"{required}(optional)" not in DIGITAX_COLUMNS
+
+
 def test_csv_one_row_per_item_line_with_fixed_constants(store, geeta_client):
     rows = get_reader("geeta").read(make_tally_xlsx()).rows
     result = process(rows, geeta_client, store)
@@ -31,9 +46,9 @@ def test_csv_one_row_per_item_line_with_fixed_constants(store, geeta_client):
         assert rec["item_code"].startswith("ITM_")
 
     b2b = [r for r in records if r["invoice_kind"] == "B2B"]
-    assert b2b and all(r["party_tin"] == "12345678-0001" for r in b2b)
+    assert b2b and all(r["party_tin(optional)"] == "12345678-0001" for r in b2b)
     b2c = [r for r in records if r["invoice_kind"] == "B2C"]
-    assert b2c and all(r["party_tin"] == "" for r in b2c)
+    assert b2c and all(r["party_tin(optional)"] == "" for r in b2c)
 
 
 def test_only_ready_invoices_written(store, geeta_client):
