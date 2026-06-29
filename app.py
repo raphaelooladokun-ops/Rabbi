@@ -38,6 +38,9 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
+# Bump on each deploy so the sidebar shows whether the latest code is live.
+APP_VERSION = "v2026.06.29-fast"
+
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
 _fragment = getattr(st, "fragment", None) or getattr(st, "experimental_fragment", None)
@@ -102,8 +105,19 @@ def render_convert(store: MasterStore, client: ClientConfig) -> None:
 
     _render_exceptions(result)
     st.divider()
-    _render_create_masters(store, client, result)
-    st.divider()
+    # Render the (potentially large) resolution tables only on demand, so the
+    # Convert page is always instant — downloads and the exceptions list are
+    # available without waiting for hundreds of editor widgets to build.
+    n_items = len(_distinct_flagged(result, FlagCode.ITEM_NOT_FOUND, "item_name"))
+    n_custs = len(_distinct_flagged(result, FlagCode.CUSTOMER_NOT_FOUND, "customer_name"))
+    if n_items or n_custs:
+        if st.checkbox(f"🛠 Resolve flagged items ({n_items}) / customers ({n_custs}) — create missing masters",
+                       key=f"show_resolve_{_run_key()}"):
+            _render_create_masters(store, client, result)
+        else:
+            st.caption("Tick to resolve here, or just download the invoices file below and fix flagged "
+                       "rows in Excel (the exceptions list above has the row numbers).")
+        st.divider()
     _render_staged_output(client, result)
 
 
@@ -825,6 +839,7 @@ def main() -> None:
             st.success("💾 Storage: Database (saved permanently)")
         else:
             st.warning("⚠️ Storage: Local (resets on restart — connect DATABASE_URL)")
+        st.caption(f"Build {APP_VERSION}")
         page = st.radio("Page", pages)
         client = None
         if page in ("Convert", "Master data"):
