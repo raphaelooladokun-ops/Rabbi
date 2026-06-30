@@ -18,14 +18,19 @@ from typing import Optional
 from sqlalchemy import (
     Boolean,
     Column,
+    Integer,
+    LargeBinary,
     MetaData,
     String,
     Table,
     create_engine,
     delete,
+    desc,
     select,
 )
 from sqlalchemy.engine import Engine
+
+from .audit import Artifact, now_iso
 
 from .config import DEFAULT_TAX_RATES, INVOICE_TYPE_CODE
 from .masters import ClientConfig, ItemEntry, PartyEntry
@@ -78,6 +83,19 @@ tax_rates_t = Table(
     "rabbi_tax_rates", _metadata,
     Column("category", String(64), primary_key=True),
     Column("rate", String(32)),
+)
+
+artifacts_t = Table(
+    "rabbi_artifacts", _metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("run_id", String(128)),
+    Column("client_id", String(64)),
+    Column("kind", String(32)),
+    Column("filename", String(255)),
+    Column("username", String(64)),
+    Column("created_at", String(32)),
+    Column("size", Integer),
+    Column("content", LargeBinary),
 )
 
 
@@ -270,3 +288,35 @@ class SqlMasterStore:
             if unique:
                 conn.execute(parties_t.insert(), [self._party_values(client_id, e) for e in unique.values()])
         self._parties_cache.pop(client_id, None)
+
+    # -- audit artifacts ---------------------------------------------------
+    def save_artifact(self, client_id: str, run_id: str, kind: str, filename: str,
+                      content: bytes, username: str = "") -> int:
+        with self.engine.begin() as conn:
+            res = conn.execute(artifacts_t.insert().values(
+                run_id=run_id, client_id=client_id, kind=kind, filename=filename,
+                username=username, created_at=now_iso(), size=len(content), content=content))
+        return int(res.inserted_primary_key[0])
+
+    def list_artifacts(self, client_id: Optional[str] = None, limit: int = 1000) -> list:
+        cols = [artifacts_t.c.id, artifacts_t.c.run_id, artifacts_t.c.client_id,
+                artifacts_t.c.kind, artifacts_t.c.filename, artifacts_t.c.username,
+                artifacts_t.c.created_at, artifacts_t.c.size]
+        q = select(*cols).order_by(desc(artifacts_t.c.created_at)).limit(limit)
+        if client_id:
+            q = q.where(artifacts_t.c.client_id == client_id)
+        with self.engine.connect() as conn:
+            rows = conn.execute(q).mappings().all()
+        return [Artifact(id=r["id"], run_id=r["run_id"], client_id=r["client_id"],
+                         kind=r["kind"], filename=r["filename"], username=r["username"],
+                         created_at=r["created_at"], size=r["size"] or 0) for r in rows]
+
+    def read_artifact(self, artifact_id) -> tuple[str, bytes]:
+        with self.engine.connect() as conn:
+            r = conn.execute(
+                select(artifacts_t.c.filename, artifacts_t.c.content)
+                .where(artifacts_t.c.id == int(artifact_id))
+            ).mappings().first()
+        if not r:
+            raise KeyError(f"artifact {artifact_id} not found")
+        return r["filename"], bytes(r["content"])

@@ -23,3 +23,6 @@ venv/
 
 # OS
 .DS_Store
+
+# Audit artifacts (local file store; real ones live in the database)
+/data/audit/

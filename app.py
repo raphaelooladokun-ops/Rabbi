@@ -15,6 +15,7 @@ from decimal import Decimal
 import pandas as pd
 import streamlit as st
 
+from core.audit import KIND_LABELS, new_run_id
 from core.backup import export_json, import_all
 from core.bootstrap import ensure_default_clients
 from core.engine import ProcessResult, process
@@ -39,7 +40,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.06.29-clear"
+APP_VERSION = "v2026.06.30-audit"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -76,14 +77,17 @@ def render_convert(store: MasterStore, client: ClientConfig) -> None:
     # edits made during review take effect immediately.
     cache_key = f"{client.id}:{uploaded.name}:{uploaded.size}"
     if st.session_state.get("rows_key") != cache_key:
+        raw_bytes = uploaded.getvalue()
         try:
-            read_result = get_reader(client.reader).read(uploaded.getvalue())
+            read_result = get_reader(client.reader).read(raw_bytes)
         except Exception as exc:  # noqa: BLE001 - surface any reader failure
             st.error(f"Could not read the file: {exc}")
             return
         st.session_state["rows"] = read_result.rows
         st.session_state["file_errors"] = read_result.file_errors
         st.session_state["rows_key"] = cache_key
+        st.session_state["raw_bytes"] = raw_bytes
+        st.session_state["raw_name"] = uploaded.name
 
     for err in st.session_state.get("file_errors", []):
         st.error(err)
@@ -111,14 +115,13 @@ def render_convert(store: MasterStore, client: ClientConfig) -> None:
     n_items = len(_distinct_flagged(result, FlagCode.ITEM_NOT_FOUND, "item_name"))
     n_custs = len(_distinct_flagged(result, FlagCode.CUSTOMER_NOT_FOUND, "customer_name"))
     if n_items or n_custs:
-        if st.checkbox(f"🛠 Resolve flagged items ({n_items}) / customers ({n_custs}) — create missing masters",
-                       key=f"show_resolve_{_run_key()}"):
+        st.header("🛠 Resolve flagged items & customers")
+        st.caption(f"**{n_items} item(s)** and **{n_custs} customer(s)** aren't in the master yet. "
+                   "Open the workspace to add them (or skip and fix in the downloaded file).")
+        if st.toggle("Open the resolve workspace", key=f"show_resolve_{_run_key()}", value=False):
             _render_create_masters(store, client, result)
-        else:
-            st.caption("Tick to resolve here, or just download the invoices file below and fix flagged "
-                       "rows in Excel (the exceptions list above has the row numbers).")
         st.divider()
-    _render_staged_output(client, result)
+    _render_staged_output(store, client, result)
 
 
 # -- per-run session buckets (scoped to the uploaded file) ------------------
@@ -177,14 +180,23 @@ def _render_create_masters(store: MasterStore, client: ClientConfig, result: Pro
     if not unknown_items and not unknown_custs:
         return
 
-    st.subheader("Create missing masters")
     st.caption(
         "New items are matched against the existing master first to avoid duplicate Digitax "
         "items; only genuinely-new ones get a new code. Nothing is auto-trusted — approve below."
     )
-    if unknown_items:
+    # Tabs keep the two big tasks separate and easy to navigate.
+    if unknown_items and unknown_custs:
+        t_items, t_custs = st.tabs([f"📦 Items to resolve ({len(unknown_items)})",
+                                    f"🧾 Customers to resolve ({len(unknown_custs)})"])
+        with t_items:
+            _render_item_proposals(store, client, unknown_items)
+        with t_custs:
+            _render_party_proposals(store, client, result, unknown_custs)
+    elif unknown_items:
+        st.markdown(f"### 📦 Items to resolve ({len(unknown_items)})")
         _render_item_proposals(store, client, unknown_items)
-    if unknown_custs:
+    else:
+        st.markdown(f"### 🧾 Customers to resolve ({len(unknown_custs)})")
         _render_party_proposals(store, client, result, unknown_custs)
 
 
@@ -427,9 +439,29 @@ def _party_grid_body(group: str, names, hints, store, client, default_approve: b
 
 
 # ---------------------------------------------------------------------------
-# Staged output (masters first, then invoices)
+# Staged output (masters first, then invoices) + audit trail
 # ---------------------------------------------------------------------------
-def _render_staged_output(client: ClientConfig, result: ProcessResult) -> None:
+def _audit_save(store, client, kind: str, filename: str, content: bytes) -> None:
+    """Record a downloaded artifact once per run+kind (best-effort)."""
+    flag = f"aud_{_run_key()}_{kind}"
+    if st.session_state.get(flag):
+        return
+    run_id = st.session_state.setdefault("run_id_map", {}).setdefault(_run_key(), new_run_id(client.id))
+    try:
+        store.save_artifact(client.id, run_id, kind, filename, content,
+                            st.session_state.get("username", ""))
+        st.session_state[flag] = True
+    except Exception:  # noqa: BLE001 - never block a download on audit failure
+        pass
+
+
+def _audit_save_upload(store, client) -> None:
+    raw = st.session_state.get("raw_bytes")
+    if raw:
+        _audit_save(store, client, "uploaded_raw", st.session_state.get("raw_name", "upload"), raw)
+
+
+def _render_staged_output(store, client: ClientConfig, result: ProcessResult) -> None:
     st.subheader("Download")
     period = run_period(iv.invoice_date for iv in result.invoices)
     slug = client.id
@@ -442,11 +474,11 @@ def _render_staged_output(client: ClientConfig, result: ProcessResult) -> None:
             "before it will accept invoices that reference them."
         )
         if created_items:
-            st.download_button(
-                f"⬇️ {slug}_new_items_{period}.csv  ({len(created_items)} items)",
-                data=write_items_template(created_items).encode("utf-8"),
-                file_name=f"{slug}_new_items_{period}.csv", mime="text/csv", type="primary",
-            )
+            data = write_items_template(created_items).encode("utf-8")
+            fname = f"{slug}_new_items_{period}.csv"
+            if st.download_button(f"⬇️ {fname}  ({len(created_items)} items)", data=data,
+                                  file_name=fname, mime="text/csv", type="primary"):
+                _audit_save(store, client, "new_items_csv", fname, data)
         if created_parties:
             short = [p for p in created_parties
                      if not (p.email_address and p.street_name and p.state and p.local_government)]
@@ -456,11 +488,11 @@ def _render_staged_output(client: ClientConfig, result: ProcessResult) -> None:
                     "(Digitax will reject incomplete parties). Complete them in the Customers section "
                     "above and approve again before uploading."
                 )
-            st.download_button(
-                f"⬇️ {slug}_new_parties_{period}.csv  ({len(created_parties)} customers)",
-                data=write_parties_template(created_parties).encode("utf-8"),
-                file_name=f"{slug}_new_parties_{period}.csv", mime="text/csv", type="primary",
-            )
+            data = write_parties_template(created_parties).encode("utf-8")
+            fname = f"{slug}_new_parties_{period}.csv"
+            if st.download_button(f"⬇️ {fname}  ({len(created_parties)} customers)", data=data,
+                                  file_name=fname, mime="text/csv", type="primary"):
+                _audit_save(store, client, "new_parties_csv", fname, data)
         if st.button("✅ Done — I've uploaded these to Digitax", key=f"done_{_run_key()}"):
             st.session_state.setdefault("uploaded_done", {})[_run_key()] = True
             st.rerun()
@@ -478,11 +510,12 @@ def _render_staged_output(client: ClientConfig, result: ProcessResult) -> None:
     # Everything resolved -> one file, no confusing second button.
     if not flagged:
         st.success(f"All {total} invoices are ready to upload to Digitax.")
-        st.download_button(
-            f"⬇️ {slug}_invoices_{period}.csv  ({total} invoices)",
-            data=write_csv_bytes(result.invoices, only_ready=True, invoice_type_code=itc),
-            file_name=f"{slug}_invoices_{period}.csv", mime="text/csv", type="primary",
-        )
+        data = write_csv_bytes(result.invoices, only_ready=True, invoice_type_code=itc)
+        fname = f"{slug}_invoices_{period}.csv"
+        if st.download_button(f"⬇️ {fname}  ({total} invoices)", data=data,
+                              file_name=fname, mime="text/csv", type="primary"):
+            _audit_save(store, client, "invoices_csv", fname, data)
+            _audit_save_upload(store, client)
         return
 
     # Some invoices still have unresolved issues -> two clearly-labelled files.
@@ -495,22 +528,22 @@ def _render_staged_output(client: ClientConfig, result: ProcessResult) -> None:
     with col1:
         st.markdown("**Ready only** — safe to upload now.")
         if ready:
-            st.download_button(
-                f"⬇️ {slug}_invoices_{period}.csv  ({len(ready)} ready)",
-                data=write_csv_bytes(result.invoices, only_ready=True, invoice_type_code=itc),
-                file_name=f"{slug}_invoices_{period}.csv", mime="text/csv", type="primary",
-                use_container_width=True,
-            )
+            data = write_csv_bytes(result.invoices, only_ready=True, invoice_type_code=itc)
+            fname = f"{slug}_invoices_{period}.csv"
+            if st.download_button(f"⬇️ {fname}  ({len(ready)} ready)", data=data, file_name=fname,
+                                  mime="text/csv", type="primary", use_container_width=True):
+                _audit_save(store, client, "invoices_csv", fname, data)
+                _audit_save_upload(store, client)
         else:
             st.caption("No fully-ready invoices yet.")
     with col2:
         st.markdown(f"**All {total}** — the {len(flagged)} flagged have blanks to fix in Excel.")
-        st.download_button(
-            f"⬇️ {slug}_invoices_all_{period}.csv  ({total})",
-            data=write_csv_bytes(result.invoices, only_ready=False, invoice_type_code=itc),
-            file_name=f"{slug}_invoices_all_{period}.csv", mime="text/csv",
-            use_container_width=True,
-        )
+        data = write_csv_bytes(result.invoices, only_ready=False, invoice_type_code=itc)
+        fname = f"{slug}_invoices_all_{period}.csv"
+        if st.download_button(f"⬇️ {fname}  ({total})", data=data, file_name=fname,
+                              mime="text/csv", use_container_width=True):
+            _audit_save(store, client, "invoices_csv", fname, data)
+            _audit_save_upload(store, client)
 
 
 # ---------------------------------------------------------------------------
@@ -709,6 +742,45 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Records / audit trail (admin)
+# ---------------------------------------------------------------------------
+def render_records(store: MasterStore) -> None:
+    st.header("Records — audit trail")
+    st.caption("Every file a client uploads and every CSV the app generates is kept here when it is "
+               "downloaded, for your records.")
+    clients = store.list_clients()
+    options = ["(all clients)"] + [c.id for c in clients]
+    sel = st.selectbox("Client", options)
+    client_id = None if sel == options[0] else sel
+
+    try:
+        artifacts = store.list_artifacts(client_id)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Could not read records: {exc}")
+        return
+    if not artifacts:
+        st.info("No files recorded yet. They appear here after a client downloads an invoices/CSV file.")
+        return
+
+    st.dataframe(pd.DataFrame([
+        {"when (UTC)": a.created_at, "client": a.client_id, "type": a.label,
+         "file": a.filename, "by": a.username, "KB": round(a.size / 1024, 1)}
+        for a in artifacts
+    ]), use_container_width=True, hide_index=True)
+
+    st.markdown("**Download a file**")
+    by_label = {f"{a.created_at} · {a.client_id} · {a.label} · {a.filename}": a for a in artifacts}
+    pick = st.selectbox("Select a recorded file", list(by_label.keys()))
+    chosen = by_label[pick]
+    try:
+        fname, content = store.read_artifact(chosen.id)
+        st.download_button(f"⬇️ Download {fname} ({round(len(content)/1024,1)} KB)",
+                           data=content, file_name=fname, type="primary")
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Could not load that file: {exc}")
+
+
+# ---------------------------------------------------------------------------
 # Settings page
 # ---------------------------------------------------------------------------
 def render_settings(store: MasterStore) -> None:
@@ -852,7 +924,8 @@ def main() -> None:
         allowed_set = set(allowed or [])
         clients = [c for c in clients if c.id in allowed_set]
 
-    pages = ["Convert", "How-to"] if not admin else ["Convert", "Master data", "Clients & settings", "How-to"]
+    pages = (["Convert", "How-to"] if not admin
+             else ["Convert", "Master data", "Records", "Clients & settings", "How-to"])
     with st.sidebar:
         st.header("Rabbi Consult")
         if using_database():
@@ -876,6 +949,8 @@ def main() -> None:
     elif page == "Master data":
         if client:
             render_masters(store, client)
+    elif page == "Records":
+        render_records(store)
     elif page == "Clients & settings":
         render_settings(store)
     else:

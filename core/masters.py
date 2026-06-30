@@ -262,3 +262,47 @@ class MasterStore:
             self._write_json(
                 self._parties_path(client_id), [asdict(e) for e in entries]
             )
+
+    # -- audit artifacts ---------------------------------------------------
+    @property
+    def _audit_dir(self) -> Path:
+        d = self.data_dir.parent / "audit"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @property
+    def _audit_index_path(self) -> Path:
+        return self._audit_dir / "index.json"
+
+    def save_artifact(self, client_id: str, run_id: str, kind: str, filename: str,
+                      content: bytes, username: str = "") -> str:
+        from .audit import now_iso
+        import uuid as _uuid
+        with self._lock:
+            aid = _uuid.uuid4().hex
+            run_dir = self._audit_dir / run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / f"{aid}.bin").write_bytes(content)
+            index = self._read_json(self._audit_index_path, [])
+            index.append({
+                "id": aid, "run_id": run_id, "client_id": client_id, "kind": kind,
+                "filename": filename, "username": username, "created_at": now_iso(),
+                "size": len(content),
+            })
+            self._write_json(self._audit_index_path, index)
+            return aid
+
+    def list_artifacts(self, client_id: Optional[str] = None, limit: int = 1000) -> list:
+        from .audit import Artifact
+        index = self._read_json(self._audit_index_path, [])
+        rows = [r for r in index if client_id is None or r["client_id"] == client_id]
+        rows.sort(key=lambda r: r["created_at"], reverse=True)
+        return [Artifact(**r) for r in rows[:limit]]
+
+    def read_artifact(self, artifact_id) -> tuple[str, bytes]:
+        index = self._read_json(self._audit_index_path, [])
+        rec = next((r for r in index if r["id"] == artifact_id), None)
+        if not rec:
+            raise KeyError(f"artifact {artifact_id} not found")
+        content = (self._audit_dir / rec["run_id"] / f"{artifact_id}.bin").read_bytes()
+        return rec["filename"], content
