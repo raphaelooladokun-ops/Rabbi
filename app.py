@@ -40,7 +40,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.06.30-audit"
+APP_VERSION = "v2026.06.30-audit2"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -762,22 +762,35 @@ def render_records(store: MasterStore) -> None:
         st.info("No files recorded yet. They appear here after a client downloads an invoices/CSV file.")
         return
 
-    st.dataframe(pd.DataFrame([
-        {"when (UTC)": a.created_at, "client": a.client_id, "type": a.label,
-         "file": a.filename, "by": a.username, "KB": round(a.size / 1024, 1)}
-        for a in artifacts
-    ]), use_container_width=True, hide_index=True)
+    # Paginate so the page stays fast as records grow; render a download button
+    # on each row (blobs are fetched only for the rows shown on this page).
+    page_size = 25
+    pages = (len(artifacts) + page_size - 1) // page_size
+    page = 1
+    top = st.columns([3, 1])
+    top[0].caption(f"{len(artifacts)} record(s)")
+    if pages > 1:
+        page = top[1].number_input(f"Page (1–{pages})", 1, pages, 1, key="records_page")
+    rows = artifacts[(page - 1) * page_size: page * page_size]
 
-    st.markdown("**Download a file**")
-    by_label = {f"{a.created_at} · {a.client_id} · {a.label} · {a.filename}": a for a in artifacts}
-    pick = st.selectbox("Select a recorded file", list(by_label.keys()))
-    chosen = by_label[pick]
-    try:
-        fname, content = store.read_artifact(chosen.id)
-        st.download_button(f"⬇️ Download {fname} ({round(len(content)/1024,1)} KB)",
-                           data=content, file_name=fname, type="primary")
-    except Exception as exc:  # noqa: BLE001
-        st.error(f"Could not load that file: {exc}")
+    ratios = [2.2, 1.4, 1.8, 3.4, 1.4, 0.9, 1.2]
+    head = st.columns(ratios)
+    for col, label in zip(head, ["When (UTC)", "Client", "Type", "File", "By", "KB", ""]):
+        col.markdown(f"**{label}**")
+    for a in rows:
+        c = st.columns(ratios)
+        c[0].write(a.created_at)
+        c[1].write(a.client_id)
+        c[2].write(a.label)
+        c[3].write(a.filename)
+        c[4].write(a.username or "—")
+        c[5].write(round(a.size / 1024, 1))
+        try:
+            _fname, content = store.read_artifact(a.id)
+            c[6].download_button("⬇️", data=content, file_name=_fname,
+                                 key=f"dl_{a.id}", help=f"Download {_fname}")
+        except Exception:  # noqa: BLE001
+            c[6].caption("n/a")
 
 
 # ---------------------------------------------------------------------------
