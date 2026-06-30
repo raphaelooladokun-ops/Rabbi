@@ -40,7 +40,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.06.30-audit2"
+APP_VERSION = "v2026.06.30-audit3"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -442,7 +442,13 @@ def _party_grid_body(group: str, names, hints, store, client, default_approve: b
 # Staged output (masters first, then invoices) + audit trail
 # ---------------------------------------------------------------------------
 def _audit_save(store, client, kind: str, filename: str, content: bytes) -> None:
-    """Record a downloaded artifact once per run+kind (best-effort)."""
+    """Record a downloaded artifact once per run+kind (best-effort).
+
+    Reps always record (for the operator's audit). An admin can opt out per run
+    via the toggle on the download step (``audit_on_<run>`` defaults to True).
+    """
+    if not st.session_state.get(f"audit_on_{_run_key()}", True):
+        return
     flag = f"aud_{_run_key()}_{kind}"
     if st.session_state.get(flag):
         return
@@ -463,6 +469,14 @@ def _audit_save_upload(store, client) -> None:
 
 def _render_staged_output(store, client: ClientConfig, result: ProcessResult) -> None:
     st.subheader("Download")
+    # Reps always keep an audit copy; an admin processing on behalf of a client
+    # can choose per run whether this run's files are stored in Records.
+    if is_admin():
+        st.session_state[f"audit_on_{_run_key()}"] = st.toggle(
+            "🗄 Store this run's files in Records (audit)", value=True,
+            key=f"auditpref_{_run_key()}",
+            help="Admin only. Off = the files you download for this run are NOT kept in Records.",
+        )
     period = run_period(iv.invoice_date for iv in result.invoices)
     slug = client.id
     created_items = list(_bucket("created_items").values())
