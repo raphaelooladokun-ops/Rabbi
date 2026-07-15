@@ -28,7 +28,7 @@ from core.output import (
     write_parties_template,
 )
 from core.digitax_resources import TAX_CATEGORY_CODES
-from core import reference
+from core import insights, reference
 from core.proposals import propose_items, propose_party, run_period, sanitize_tin
 from core.reference import invoice_type_label, is_valid_hsn, is_valid_service_code
 from core.readers import get_reader
@@ -38,7 +38,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.07.15-digitaxfix"
+APP_VERSION = "v2026.07.15-insights"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -828,6 +828,79 @@ def render_records(store: MasterStore) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Customer insights (admin)
+# ---------------------------------------------------------------------------
+def render_insights(store: MasterStore) -> None:
+    st.header("Customer insights")
+    st.caption("Who each client does the most business with, built from the raw sales files already "
+               "kept in Records. This is admin-only and does not touch the client's workflow.")
+
+    clients = store.list_clients()
+    options = ["(all clients)"] + [c.id for c in clients]
+    top = st.columns([2, 1.4, 1.4, 1])
+    sel = top[0].selectbox("Client", options, key="ins_client")
+    client_id = None if sel == options[0] else sel
+    rank_by = top[1].radio("Rank by", ["Invoices", "Total value"], horizontal=True, key="ins_rank")
+    include = top[2].radio("Include", ["B2B only", "All customers"], horizontal=True, key="ins_incl")
+    if top[3].button("↻ Refresh", key="ins_refresh", help="Recompute from the latest records"):
+        st.session_state.pop("_ins_cache", None)
+
+    # Re-parsing the stored uploads is the expensive bit; cache it and only
+    # recompute when the set of records (or the client filter) changes.
+    sig = (client_id, insights.records_signature(store, client_id))
+    cache = st.session_state.get("_ins_cache")
+    if not cache or cache.get("sig") != sig:
+        with st.spinner("Reading stored records…"):
+            stats = insights.customer_stats(store, client_id)
+        st.session_state["_ins_cache"] = {"sig": sig, "stats": stats}
+    else:
+        stats = cache["stats"]
+
+    if not stats:
+        st.info("No stored sales files yet. Insights appear once runs are kept in Records "
+                "(the admin 'Store this run's files' toggle on Convert).")
+        return
+
+    if include == "B2B only":
+        stats = [s for s in stats if s.kind == "B2B"]
+    if rank_by == "Total value":
+        stats = sorted(stats, key=lambda s: (s.total_ex_vat, s.invoices), reverse=True)
+    else:
+        stats = sorted(stats, key=lambda s: (s.invoices, s.total_ex_vat), reverse=True)
+    if not stats:
+        st.info("No customers match this filter. Switch 'Include' to All customers.")
+        return
+
+    total_val = sum((s.total_ex_vat for s in stats), Decimal("0"))
+    m = st.columns(3)
+    m[0].metric("Customers", len(stats))
+    m[1].metric("Invoices", sum(s.invoices for s in stats))
+    m[2].metric("Total value (pre-VAT)", f"₦{total_val:,.2f}")
+
+    rows = [{
+        "Rank": i + 1,
+        "Client": s.client_id,
+        "Customer": s.customer_name,
+        "Type": s.kind or "—",
+        "Invoices": s.invoices,
+        "Total value (pre-VAT)": float(s.total_ex_vat),
+        "First seen": s.first_date.isoformat() if s.first_date else "",
+        "Last seen": s.last_date.isoformat() if s.last_date else "",
+    } for i, s in enumerate(stats)]
+    df = pd.DataFrame(rows)
+    st.dataframe(
+        df, use_container_width=True, hide_index=True,
+        column_config={"Total value (pre-VAT)": st.column_config.NumberColumn(format="₦%.2f")},
+    )
+    st.download_button(
+        "⬇️ Download insights (CSV)",
+        data=df.to_csv(index=False).encode("utf-8"),
+        file_name=f"customer_insights_{client_id or 'all'}.csv",
+        mime="text/csv", key="ins_dl",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Settings page
 # ---------------------------------------------------------------------------
 def render_settings(store: MasterStore) -> None:
@@ -972,7 +1045,7 @@ def main() -> None:
         clients = [c for c in clients if c.id in allowed_set]
 
     pages = (["Convert", "How-to"] if not admin
-             else ["Convert", "Master data", "Records", "Clients & settings", "How-to"])
+             else ["Convert", "Master data", "Records", "Customer insights", "Clients & settings", "How-to"])
     with st.sidebar:
         st.header("Rabbi Consult")
         if using_database():
@@ -998,6 +1071,8 @@ def main() -> None:
             render_masters(store, client)
     elif page == "Records":
         render_records(store)
+    elif page == "Customer insights":
+        render_insights(store)
     elif page == "Clients & settings":
         render_settings(store)
     else:
