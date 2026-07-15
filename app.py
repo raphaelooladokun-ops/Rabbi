@@ -40,7 +40,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.06.30-audit3"
+APP_VERSION = "v2026.07.15-hsnfmt"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -283,15 +283,18 @@ def _render_item_proposals(store: MasterStore, client: ClientConfig, unknown_ite
             created = _bucket("created_items")
             missing_hsn = bad_hsn = 0
             for _, r in edited.iterrows():
-                hsn = str(r.get("hsn_code", "")).strip()
                 is_svc = bool(r.get("is_service", False))
+                # Products get coerced to the Digitax `xxxx.xx` HSN format;
+                # service codes are left as entered (they use a different code set).
+                raw_hsn = str(r.get("hsn_code", "")).strip()
+                hsn = raw_hsn if is_svc else reference.normalize_hsn(raw_hsn)
                 if not hsn:
                     missing_hsn += 1
                 elif not (is_valid_service_code(hsn) if is_svc else is_valid_hsn(hsn)):
                     bad_hsn += 1
                 entry = ItemEntry(
                     name=str(r["name"]), item_code=str(r["item_code"]),
-                    hsn_code=str(r.get("hsn_code", "")).strip(),
+                    hsn_code=hsn,
                     tax_category=str(r.get("tax_category_code", "STANDARD_VAT")).strip() or "STANDARD_VAT",
                     item_category=str(r.get("item_category", "")).strip(),
                     description=str(r.get("description", "")).strip() or str(r["name"]),

@@ -194,7 +194,7 @@ def propose_items(
         # Draft from the closest existing item so the HSN (in the master's
         # format), category and tax_category follow existing patterns. The
         # operator reviews/edits before approving.
-        hsn = near.hsn_code if near else ""
+        hsn = reference.normalize_hsn(near.hsn_code) if near else ""
         category = (near.item_category if near and near.item_category else default_category)
         tax = (near.tax_category if near and near.tax_category else default_tax)
         is_service = near.is_service if near else False

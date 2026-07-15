@@ -41,6 +41,19 @@ def test_hsn_and_service_validation():
     assert reference.is_valid_service_code("0000") is False
 
 
+def test_normalize_hsn_forces_xxxx_dot_xx():
+    # pads short codes with trailing zeros, keeps the 6-digit subheading
+    assert reference.normalize_hsn("9031.8") == "9031.80"
+    assert reference.normalize_hsn("392020") == "3920.20"
+    assert reference.normalize_hsn("0101.21") == "0101.21"
+    assert reference.normalize_hsn("29096010") == "2909.60"  # 10-digit -> 6
+    assert reference.normalize_hsn("101") == "1010.00"
+    # blank stays blank — we never invent a code
+    assert reference.normalize_hsn("") == ""
+    assert reference.normalize_hsn("   ") == ""
+    assert reference.normalize_hsn("N/A") == ""
+
+
 def test_party_proposal_fills_lga_and_state_from_address():
     p = propose_party("Acme", tin_hint="01234567-0001", email="a@b.com",
                       address_text="14 Allen Avenue, Ikeja, Lagos")

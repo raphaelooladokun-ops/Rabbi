@@ -156,6 +156,22 @@ def is_valid_hsn(code: str) -> bool:
     return bool(d) and d in _hsn_digit_set()
 
 
+def normalize_hsn(code: str) -> str:
+    """Coerce an HSN code to the Digitax `xxxx.xx` format (6 digits).
+
+    Keeps only digits, pads short codes with trailing zeros and truncates long
+    ones to the 6-digit HS subheading, then inserts the dot. Blank stays blank
+    (we never invent a code). Examples:
+        "9031.8"  -> "9031.80"     "392020" -> "3920.20"
+        "0101.21" -> "0101.21"     "29096010" (10-digit) -> "2909.60"
+    """
+    d = _digits(code)
+    if not d:
+        return ""
+    d = (d + "000000")[:6]
+    return f"{d[:4]}.{d[4:6]}"
+
+
 # -- service codes ----------------------------------------------------------
 @lru_cache(maxsize=1)
 def service_codes() -> dict[str, str]:
