@@ -38,7 +38,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.07.15-insights"
+APP_VERSION = "v2026.07.15-insights2"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -884,13 +884,18 @@ def render_insights(store: MasterStore) -> None:
         "Type": s.kind or "—",
         "Invoices": s.invoices,
         "Total value (pre-VAT)": float(s.total_ex_vat),
+        "Biggest invoice #": s.top_invoice_number,
+        "Biggest invoice value": float(s.top_invoice_value),
         "First seen": s.first_date.isoformat() if s.first_date else "",
         "Last seen": s.last_date.isoformat() if s.last_date else "",
     } for i, s in enumerate(stats)]
     df = pd.DataFrame(rows)
     st.dataframe(
         df, use_container_width=True, hide_index=True,
-        column_config={"Total value (pre-VAT)": st.column_config.NumberColumn(format="₦%.2f")},
+        column_config={
+            "Total value (pre-VAT)": st.column_config.NumberColumn(format="₦%.2f"),
+            "Biggest invoice value": st.column_config.NumberColumn(format="₦%.2f"),
+        },
     )
     st.download_button(
         "⬇️ Download insights (CSV)",
