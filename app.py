@@ -40,7 +40,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.07.15-hsnfmt"
+APP_VERSION = "v2026.07.15-recdate"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -767,8 +767,15 @@ def render_records(store: MasterStore) -> None:
                "downloaded, for your records.")
     clients = store.list_clients()
     options = ["(all clients)"] + [c.id for c in clients]
-    sel = st.selectbox("Client", options)
+    fcol = st.columns([2, 1, 1])
+    sel = fcol[0].selectbox("Client", options)
     client_id = None if sel == options[0] else sel
+    # Optional date window (leave a box empty to leave that side open). Records
+    # are stamped in UTC; matching is on the calendar date of created_at.
+    date_from = fcol[1].date_input("From", value=None, key="records_from",
+                                    help="Show records on/after this date. Leave blank for no start.")
+    date_to = fcol[2].date_input("To", value=None, key="records_to",
+                                 help="Show records on/before this date. Leave blank for no end.")
 
     try:
         artifacts = store.list_artifacts(client_id)
@@ -778,6 +785,17 @@ def render_records(store: MasterStore) -> None:
     if not artifacts:
         st.info("No files recorded yet. They appear here after a client downloads an invoices/CSV file.")
         return
+
+    if date_from or date_to:
+        lo = date_from.isoformat() if date_from else ""
+        hi = date_to.isoformat() if date_to else ""
+        # created_at is ISO ("2026-07-15T..."), so its first 10 chars are the date.
+        artifacts = [a for a in artifacts
+                     if (not lo or a.created_at[:10] >= lo)
+                     and (not hi or a.created_at[:10] <= hi)]
+        if not artifacts:
+            st.info("No records fall within that date range. Widen or clear the From/To dates.")
+            return
 
     # Paginate so the page stays fast as records grow; render a download button
     # on each row (blobs are fetched only for the rows shown on this page).
