@@ -31,6 +31,7 @@ class FlagCode(str, Enum):
 
     CUSTOMER_NOT_FOUND = "customer_not_found"
     ITEM_NOT_FOUND = "item_not_found"
+    DUPLICATE_ITEM = "duplicate_item"
     BROKEN_SOURCE_VALUE = "broken_source_value"
     INVOICE_TOTAL_MISMATCH = "invoice_total_mismatch"
     INVOICE_NUMBER_OVERFLOW = "invoice_number_overflow"

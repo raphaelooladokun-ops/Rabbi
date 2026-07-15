@@ -10,7 +10,7 @@ from __future__ import annotations
 import csv
 import io
 from datetime import date, time
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable, Optional
 
 from .config import (
@@ -40,6 +40,38 @@ def _fmt_num(value: Optional[Decimal]) -> str:
     return format(d, "f")
 
 
+_CENT = Decimal("0.01")
+
+
+def _round2(d: Decimal) -> Decimal:
+    return d.quantize(_CENT, rounding=ROUND_HALF_UP)
+
+
+def emit_quantity_price(line) -> tuple[Optional[Decimal], Optional[Decimal]]:
+    """Return (quantity, unit_price) to write for a line.
+
+    Digitax requires ``unit_price`` at no more than 2 decimal places. Most lines
+    already satisfy that and pass through untouched. When a line carries a
+    back-computed price with a long decimal tail (e.g. value / quantity), simply
+    rounding the price would shift a large-quantity line's taxable total by a
+    material amount. So for those lines we round the price to 2 dp *and* absorb
+    the residual by re-deriving the quantity (also 2 dp) from the line's
+    pre-VAT value, keeping ``unit_price × quantity`` equal to that value — the
+    figure reconciliation is based on — to within a kobo.
+    """
+    q = line.quantity
+    u = line.unit_price
+    if u is None:
+        return q, None
+    u2 = _round2(u)
+    if u2 == u or q is None:
+        return q, u2  # already <=2dp (the common case) — nothing to absorb
+    value = line.line_value if line.line_value is not None else (u * q)
+    if u2 != 0 and value is not None:
+        return _round2(value / u2), u2
+    return q, u2
+
+
 def _row_dict(
     iv: InvoiceSummary,
     line,
@@ -54,6 +86,7 @@ def _row_dict(
     # Digitax does not allow backdating: every row carries the processing date
     # (today), formatted YYYY-MM-DD — not the source invoice date.
     today = (doc_date or date.today()).isoformat()
+    out_qty, out_price = emit_quantity_price(line)
     return {
         "trader_invoice_number": trader,
         "invoice_type_code": invoice_type_code,
@@ -71,8 +104,8 @@ def _row_dict(
         "ship_party_tin(optional)": "",
         "tax_representative_party_tin(optional)": "",
         "item_code": line.item_code or "",
-        "quantity": _fmt_num(line.quantity),
-        "unit_price": _fmt_num(line.unit_price),  # VAT-exclusive
+        "quantity": _fmt_num(out_qty),
+        "unit_price": _fmt_num(out_price),  # VAT-exclusive, <=2 dp
         "discount_rate(optional)": "",
         "fee_rate(optional)": "",
         "tax_rate": _fmt_num(line.tax_rate),

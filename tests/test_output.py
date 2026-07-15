@@ -95,6 +95,42 @@ def test_all_export_includes_flagged_with_blank_item_code(store, geeta_client):
     assert bread  # unknown 'Bread' line exported with a blank item_code to fill in
 
 
+def test_unit_price_rounded_to_two_dp_and_value_preserved(store, geeta_client):
+    # A back-computed price with a long tail (the ITM_1446 case) must emit a
+    # <=2dp unit_price, and the residual is absorbed into the quantity so the
+    # line's pre-VAT value is preserved.
+    from decimal import Decimal
+    from core.masters import ItemEntry
+    from core.models import LineRow
+    store.seed_items("geeta", [ItemEntry(name="Bulk", item_code="ITM_B", tax_category="STANDARD_VAT")])
+    qty = Decimal("1469180")
+    price = Decimal("41.21432874120258")
+    value = price * qty
+    row = LineRow(source_row=1, invoice_number_raw="INV-R", customer_name="Cash Sales",
+                  item_name="Bulk", quantity=qty, unit_price=price, line_value=value,
+                  tax_rate=Decimal("0.075"))
+    result = process([row], geeta_client, store)
+    rec = list(csv.DictReader(io.StringIO(write_csv(result.invoices))))[0]
+    up = rec["unit_price"]
+    assert "." not in up or len(up.split(".")[1]) <= 2  # Digitax 2dp rule
+    emitted = Decimal(rec["unit_price"]) * Decimal(rec["quantity"])
+    assert abs(emitted - value) <= Decimal("1")  # residual absorbed to within a kobo
+
+
+def test_clean_unit_price_and_quantity_pass_through_unchanged(store, geeta_client):
+    from decimal import Decimal
+    from core.masters import ItemEntry
+    from core.models import LineRow
+    store.seed_items("geeta", [ItemEntry(name="Rice 50kg", item_code="ITM_001", tax_category="STANDARD_VAT")])
+    row = LineRow(source_row=1, invoice_number_raw="INV-C", customer_name="Cash Sales",
+                  item_name="Rice 50kg", quantity=Decimal("10"), unit_price=Decimal("172"),
+                  line_value=Decimal("1720"), tax_rate=Decimal("0.075"))
+    result = process([row], geeta_client, store)
+    rec = list(csv.DictReader(io.StringIO(write_csv(result.invoices))))[0]
+    assert rec["quantity"] == "10"      # untouched — nothing to absorb
+    assert rec["unit_price"] == "172"
+
+
 def test_exceptions_report_lists_unknown_item_with_source_rows(store, geeta_client):
     from core.masters import ItemEntry
     store.seed_items("geeta", [ItemEntry(name="Rice 50kg", item_code="ITM_001", tax_category="STANDARD_VAT")])

@@ -8,6 +8,7 @@ from core.proposals import (
     propose_party,
     party_entry_from_proposal,
     run_period,
+    sanitize_tin,
 )
 from datetime import date
 
@@ -95,6 +96,33 @@ def test_never_fabricates_tin():
     p = propose_party("Gamma", address_text="No tin in here, Lagos")
     assert p.tin == ""
     assert p.can_be_b2b is False
+
+
+def test_sanitize_tin_strips_label_and_rejects_malformed():
+    # Strips a "TIN:"/"VAT" label and internal spaces on a well-formed TIN.
+    assert sanitize_tin("TIN:01234567-0001") == "01234567-0001"
+    assert sanitize_tin("VAT No. 01234567-0001") == "01234567-0001"
+    assert sanitize_tin("0123 4567-0001") == "01234567-0001"
+    assert sanitize_tin("12345678") == "12345678"  # bare base TIN is fine
+    # The malformed value Digitax rejected: a bare 13-digit run -> dropped.
+    assert sanitize_tin("TIN:2101110031631") == ""
+    assert sanitize_tin("2101110031631") == ""
+    assert sanitize_tin("NOT APPLICABLE") == ""
+    assert sanitize_tin("") == ""
+
+
+def test_new_party_drops_malformed_tin_stays_b2c():
+    # A garbled TIN hint must never make a new party B2B or reach an invoice.
+    p = propose_party("Delta", tin_hint="TIN:2101110031631", email="a@b.com",
+                      address_text="1 Road, Ikeja, Lagos")
+    assert p.tin == ""
+    assert p.can_be_b2b is False
+    assert party_entry_from_proposal(p).status == "B2C"
+    # A clean, labelled TIN is accepted and normalised.
+    ok = propose_party("Echo", tin_hint="TIN: 01234567-0001", email="a@b.com",
+                       address_text="1 Road, Ikeja, Lagos")
+    assert ok.tin == "01234567-0001"
+    assert ok.can_be_b2b is True
 
 
 def test_run_period_picks_common_month():

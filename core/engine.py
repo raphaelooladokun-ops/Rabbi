@@ -124,6 +124,8 @@ def process(rows: list[LineRow], client: ClientConfig, store: MasterStore) -> Pr
         _resolve_party(row, client, store)
 
     invoices = _group_invoices(rows)
+    for iv in invoices:
+        _merge_duplicate_lines(iv)
     _apply_invoice_number_rule(invoices)
     for iv in invoices:
         _reconcile(iv)
@@ -284,6 +286,82 @@ def _group_invoices(rows: list[LineRow]) -> list[InvoiceSummary]:
             ln.invoice_kind = iv.invoice_kind
             ln.customer_tin = iv.party_tin
     return invoices
+
+
+# -- duplicate item lines ---------------------------------------------------
+def _combine_lines(group: list[LineRow]) -> LineRow:
+    """Fold several same-item/same-price lines into one, summing the amounts."""
+    base = group[0]
+    qty = Decimal("0")
+    val = Decimal("0")
+    have_qty = have_val = False
+    for ln in group:
+        if ln.quantity is not None:
+            qty += ln.quantity
+            have_qty = True
+        if ln.line_value is not None:
+            val += ln.line_value
+            have_val = True
+    base.quantity = qty if have_qty else None
+    if have_val:
+        base.line_value = val
+    # unit_price is identical across the group (that is why we may merge); leave
+    # it. Carry any flags from the folded-in lines so nothing is lost.
+    for ln in group[1:]:
+        base.flags.extend(ln.flags)
+    return base
+
+
+def _merge_duplicate_lines(iv: InvoiceSummary) -> None:
+    """Collapse repeated item_codes within one invoice.
+
+    Digitax rejects an invoice that lists the same ``item_code`` twice. When the
+    repeats share a unit price (and tax rate) we merge them into a single line
+    (summing quantity/value) — safe and total-preserving. When the same item
+    appears at *different* prices we cannot pick one, so we flag it as an error
+    for the operator to resolve rather than silently guessing.
+    """
+    groups: dict[str, list[LineRow]] = {}
+    order: list[str] = []
+    for ln in iv.lines:
+        # Unresolved items (no item_code) are already flagged; keep them
+        # distinct so they are never merged together.
+        code = ln.item_code or f"\0{id(ln)}"
+        if code not in groups:
+            groups[code] = []
+            order.append(code)
+        groups[code].append(ln)
+
+    new_lines: list[LineRow] = []
+    for code in order:
+        group = groups[code]
+        if len(group) == 1 or code.startswith("\0"):
+            new_lines.extend(group)
+            continue
+        by_price: dict[tuple, list[LineRow]] = {}
+        price_order: list[tuple] = []
+        for ln in group:
+            key = (ln.unit_price, ln.tax_rate)
+            if key not in by_price:
+                by_price[key] = []
+                price_order.append(key)
+            by_price[key].append(ln)
+        if len(price_order) > 1:
+            # Same item, more than one price/rate on the invoice: not mergeable.
+            base = group[0]
+            base.add_flag(
+                FlagCode.DUPLICATE_ITEM,
+                Severity.ERROR,
+                f"Item '{base.item_name}' ({code}) appears on this invoice at more than one "
+                f"unit price; Digitax rejects a repeated item_code. Combine it into one line "
+                f"or split the invoice before exporting.",
+                "item_code",
+                item_name=base.item_name,
+            )
+            new_lines.extend(group)
+            continue
+        new_lines.append(_combine_lines(group))
+    iv.lines = new_lines
 
 
 # -- invoice-number 30-char rule -------------------------------------------

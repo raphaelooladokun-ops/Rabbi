@@ -246,6 +246,15 @@ NG_STATE_CODES: dict[str, str] = {
 # A Nigerian TIN: digits, optionally with a -NNNN branch suffix.
 _TIN_RE = re.compile(r"\b(\d{8,15}-\d{4}|\d{8,15})\b")
 
+# A label sometimes glued to a TIN in the source, e.g. "TIN:", "VAT No.",
+# "RC -". Stripped before we validate a new party's TIN.
+_TIN_LABEL = re.compile(r"(?i)^\s*(?:tin|vat(?:\s*no)?|rc|tax\s*id(?:entification)?(?:\s*number)?)\b[\s:.#-]*")
+# A TIN we will accept onto a NEW party: a plain 8–10 digit base, optionally
+# with the 4-digit branch suffix. A bare 11+ digit run (e.g. the malformed
+# "TIN:2101110031631" Digitax rejected) is not accepted — we never save a
+# guessed/garbled TIN onto a new B2B party.
+_ACCEPTABLE_TIN = re.compile(r"^(?:\d{8,10}-\d{4}|\d{8,10})$")
+
 
 def extract_tin(text: str) -> str:
     """Pull a TIN-looking token out of free address/VAT text; '' if none."""
@@ -253,6 +262,21 @@ def extract_tin(text: str) -> str:
         return ""
     m = _TIN_RE.search(str(text))
     return m.group(1) if m else ""
+
+
+def sanitize_tin(raw: str) -> str:
+    """Clean a raw TIN for a NEW party and accept it only if well-formed.
+
+    Strips any leading label ("TIN:", "VAT No.", …) and internal whitespace,
+    then returns the TIN only if it matches an acceptable Digitax format; else
+    ''. This guards party *creation* — TINs read from the parties master are
+    trusted and never pass through here.
+    """
+    if not raw:
+        return ""
+    s = _TIN_LABEL.sub("", str(raw)).strip()
+    s = re.sub(r"\s+", "", s)
+    return s if _ACCEPTABLE_TIN.match(s) else ""
 
 
 def derive_state_code(text: str) -> str:
@@ -303,7 +327,9 @@ def propose_party(
     customer stays B2C for this run, flagged as "could be B2B once details are
     obtained", and is not blocked.
     """
-    tin = (tin_hint or extract_tin(address_text)).strip()
+    # Only a sanitised, well-formed TIN qualifies a new party as B2B; a garbled
+    # one ("TIN:2101110031631") is dropped so it never reaches an invoice.
+    tin = sanitize_tin(tin_hint or extract_tin(address_text))
     email = (email or "").strip()
     address = (address_text or "").strip()
     state = derive_state_code(address)

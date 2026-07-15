@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import io
 import json
-import re
 from decimal import Decimal
 
 import pandas as pd
@@ -28,10 +27,9 @@ from core.output import (
     write_items_template,
     write_parties_template,
 )
-from core.parsing import looks_like_tin
 from core.digitax_resources import TAX_CATEGORY_CODES
 from core import reference
-from core.proposals import propose_items, propose_party, run_period
+from core.proposals import propose_items, propose_party, run_period, sanitize_tin
 from core.reference import invoice_type_label, is_valid_hsn, is_valid_service_code
 from core.readers import get_reader
 from core.store import get_master_store, using_database
@@ -40,7 +38,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.07.15-recdate"
+APP_VERSION = "v2026.07.15-digitaxfix"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -406,10 +404,10 @@ def _party_grid_body(group: str, names, hints, store, client, default_approve: b
             k = f"{group}_{_run_key()}_{i}"
             if not st.session_state.get(f"ap_{k}"):
                 continue
-            tin = re.sub(r"\s+", "", str(st.session_state.get(f"tin_{k}", "")))  # no spaces in a TIN
-            if tin and not looks_like_tin(tin):
+            raw_tin = str(st.session_state.get(f"tin_{k}", ""))
+            tin = sanitize_tin(raw_tin)  # strips 'TIN:'/spaces; drops malformed
+            if raw_tin.strip() and not tin:
                 junk_tin += 1
-                tin = ""
             sc = s_label2code.get(st.session_state.get(f"state_{k}", ""), "")
             lga_pairs = reference.lgas_for_state(sc) if sc else []
             lc = {f"{n} ({code})": code for n, code in lga_pairs}.get(st.session_state.get(f"lga_{k}", ""), "")
@@ -431,7 +429,8 @@ def _party_grid_body(group: str, names, hints, store, client, default_approve: b
                 n_b2c += 1
         msg = f"Saved {n_b2b} B2B and {n_b2c} B2C customer(s)."
         if junk_tin:
-            msg += f" {junk_tin} non-TIN value(s) (e.g. 'NOT APPLICABLE') dropped → saved as B2C."
+            msg += (f" {junk_tin} malformed TIN value(s) (e.g. 'NOT APPLICABLE' or a 'TIN:'-prefixed / "
+                    "wrong-length number) dropped → saved as B2C.")
         if incomplete:
             st.warning(
                 f"⚠️ {incomplete} B2B customer(s) are missing email / street / state / LGA. "

@@ -138,6 +138,46 @@ def test_item_resolves_by_hsn_when_name_differs(store):
     assert result.invoices[0].lines[0].item_code == "ITM_S"
 
 
+def test_duplicate_same_item_same_price_lines_merged(store, geeta_client):
+    # Digitax rejects a repeated item_code; same item at the same price on one
+    # invoice must be folded into a single line (summing quantity/value).
+    store.seed_items("geeta", [ItemEntry(name="Rice 50kg", item_code="ITM_001", tax_category="STANDARD_VAT")])
+    rows = [
+        LineRow(source_row=1, invoice_number_raw="INV-D", customer_name="Cash Sales",
+                item_name="Rice 50kg", quantity=Decimal("10"), unit_price=Decimal("100"),
+                line_value=Decimal("1000"), tax_rate=Decimal("0.075")),
+        LineRow(source_row=2, invoice_number_raw="INV-D", customer_name="Cash Sales",
+                item_name="Rice 50kg", quantity=Decimal("5"), unit_price=Decimal("100"),
+                line_value=Decimal("500"), tax_rate=Decimal("0.075")),
+    ]
+    result = process(rows, geeta_client, store)
+    iv = result.invoices[0]
+    assert len(iv.lines) == 1
+    assert iv.lines[0].quantity == Decimal("15")
+    assert iv.lines[0].line_value == Decimal("1500")
+    assert FlagCode.DUPLICATE_ITEM not in _codes(result.invoices)
+    assert iv.ready is True
+
+
+def test_duplicate_same_item_different_price_flagged_not_merged(store, geeta_client):
+    # Same item at two different prices (the ITM_922 case) cannot be safely
+    # merged; it is flagged as an error for the operator, not guessed.
+    store.seed_items("geeta", [ItemEntry(name="Rice 50kg", item_code="ITM_001", tax_category="STANDARD_VAT")])
+    rows = [
+        LineRow(source_row=1, invoice_number_raw="INV-E", customer_name="Cash Sales",
+                item_name="Rice 50kg", quantity=Decimal("10"), unit_price=Decimal("151.8"),
+                line_value=Decimal("1518"), tax_rate=Decimal("0.075")),
+        LineRow(source_row=2, invoice_number_raw="INV-E", customer_name="Cash Sales",
+                item_name="Rice 50kg", quantity=Decimal("5"), unit_price=Decimal("120"),
+                line_value=Decimal("600"), tax_rate=Decimal("0.075")),
+    ]
+    result = process(rows, geeta_client, store)
+    iv = result.invoices[0]
+    assert len(iv.lines) == 2  # left intact
+    assert FlagCode.DUPLICATE_ITEM in _codes(result.invoices)
+    assert iv.ready is False  # blocked for review
+
+
 def test_total_mismatch_flagged(store, geeta_client):
     row = LineRow(
         source_row=1, invoice_number_raw="INV-9", customer_name="Cash Sales",
