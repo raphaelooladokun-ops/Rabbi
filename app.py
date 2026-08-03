@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from decimal import Decimal
 
 import pandas as pd
@@ -29,6 +30,7 @@ from core.output import (
 )
 from core.digitax_resources import TAX_CATEGORY_CODES
 from core import insights, reference
+from core.onboarding import classify_vat, find_vat_column, assign_item_codes, STANDARD as VAT_STANDARD
 from core.proposals import propose_items, propose_party, run_period, sanitize_tin
 from core.reference import invoice_type_label, is_valid_hsn, is_valid_service_code
 from core.readers import get_reader
@@ -38,7 +40,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.07.15-masterdl"
+APP_VERSION = "v2026.08.03-onboarding"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -888,6 +890,240 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
 
 
 # ---------------------------------------------------------------------------
+# New client + onboarding items (admin)
+# ---------------------------------------------------------------------------
+# Reader = the client's sales-file layout. New clients reuse a known layout.
+_READER_LABELS = {
+    "geeta": "Tally Sales Register (.xlsx)",
+    "goldcoin": "Tally Sales Register (.xls, legacy)",
+    "friendship": "Flat 'SALES LEDGER' (.xlsx)",
+}
+
+
+def _slug(text: str) -> str:
+    """A safe client id: lowercase letters/digits/underscores."""
+    s = "".join(ch if ch.isalnum() else "_" for ch in str(text).lower())
+    return re.sub(r"_+", "_", s).strip("_")
+
+
+def _render_new_client(store: MasterStore) -> None:
+    with st.form("new_client"):
+        st.markdown("**Add a new client** — creates its full environment (Convert, Master data, "
+                    "Records, insights) automatically.")
+        name = st.text_input("Client name")
+        cid = st.text_input("Client ID (short; letters/numbers only)",
+                            help="Leave blank to auto-generate from the name.")
+        reader = st.selectbox("Sales-file format", list(_READER_LABELS),
+                              format_func=lambda k: _READER_LABELS[k],
+                              help="Which layout the client's raw sales export uses (for Convert).")
+        b2b = st.checkbox("Has registered B2B customers", value=True)
+        tin_rule = st.text_input("TIN suffix rule (e.g. -0001; blank for none)")
+        if st.form_submit_button("Create client"):
+            final_id = _slug(cid or name)
+            existing = {c.id for c in store.list_clients()}
+            if not name.strip():
+                st.error("Enter a client name.")
+            elif not final_id:
+                st.error("Could not derive a valid client ID — enter one explicitly.")
+            elif final_id in existing:
+                st.error(f"A client with ID '{final_id}' already exists.")
+            else:
+                store.save_client(ClientConfig(
+                    id=final_id, name=name.strip(), reader=reader,
+                    b2b_expected=b2b, tin_suffix_rule=tin_rule.strip()))
+                st.success(f"Created client '{name.strip()}' ({final_id}). It now has its own "
+                           "Convert, Master data and everything else.")
+                st.rerun()
+
+
+def _col_index(cols: list[str], guess: str) -> int:
+    return cols.index(guess) if guess in cols else 0
+
+
+def _opt_index(cols: list[str], guess: str) -> int:
+    return (cols.index(guess) + 1) if guess in cols else 0
+
+
+def _guess_col(cols: list[str], aliases: list[str]) -> str:
+    norm = {_norm_col(c): c for c in cols}
+    for a in aliases:
+        if _norm_col(a) in norm:
+            return norm[_norm_col(a)]
+    return ""
+
+
+def _onb_entries(draft: list[dict], codes: list[str]) -> list:
+    """Build ItemEntry objects from the staged draft + assigned codes."""
+    return [ItemEntry(
+        name=d["name"], item_code=codes[i],
+        hsn_code=reference.normalize_hsn(d["hsn_code"]),
+        tax_category=d["tax_category"] or "STANDARD_VAT",
+        item_category=d["item_category"], description=d["description"] or d["name"],
+        is_service=bool(d["is_service"]),
+    ) for i, d in enumerate(draft)]
+
+
+def render_onboarding(store: MasterStore) -> None:
+    st.header("Onboarding — build a client's items master")
+    st.caption("Turn a client's raw product list into a Digitax-ready items master: stage it, set VAT "
+               "status (approve all as VATable or mark exceptions), then load it into the client.")
+
+    with st.expander("➕ Create a new client (gives it a full environment)"):
+        _render_new_client(store)
+
+    clients = store.list_clients()
+    if not clients:
+        st.info("Create a client above to begin onboarding its items.")
+        return
+    target = st.selectbox("Target client", clients, format_func=lambda c: f"{c.name} ({c.id})",
+                          key="onb_target")
+
+    up = st.file_uploader("Raw items list (CSV/XLSX)", type=["csv", "xlsx"], key=f"onb_up_{target.id}")
+    table = _import_table(up)
+    dkey = f"onb_draft_{target.id}"
+
+    if table is not None and len(table.columns):
+        cols = list(table.columns)
+        st.markdown("**Map the columns** (we guessed; adjust if needed)")
+        c1, c2, c3 = st.columns(3)
+        name_col = c1.selectbox("Item name *", cols,
+                                index=_col_index(cols, _guess_col(cols, ["item_name", "name", "item name", "product", "description"])),
+                                key=f"onb_name_{target.id}")
+        desc_col = c2.selectbox("Description (optional)", ["(none)"] + cols,
+                                index=_opt_index(cols, _guess_col(cols, ["description", "item description"])),
+                                key=f"onb_desc_{target.id}")
+        hsn_col = c3.selectbox("HSN code (optional)", ["(none)"] + cols,
+                               index=_opt_index(cols, _guess_col(cols, _ITEM_ALIASES["hsn_code"])),
+                               key=f"onb_hsn_{target.id}")
+        c4, c5 = st.columns(2)
+        cat_col = c4.selectbox("Item category (optional)", ["(none)"] + cols,
+                               index=_opt_index(cols, _guess_col(cols, ["item_category", "category_name", "category"])),
+                               key=f"onb_cat_{target.id}")
+        no_vat = "(no VAT column — approve all as VATable)"
+        vat_guess = find_vat_column(cols)
+        vat_opts = [no_vat] + cols
+        vat_col = c5.selectbox("VAT / taxable column", vat_opts,
+                               index=(vat_opts.index(vat_guess) if vat_guess in vat_opts else 0),
+                               key=f"onb_vat_{target.id}",
+                               help="If the list states which items are VATable/exempt, pick that column.")
+        has_vat = vat_col in cols
+
+        if st.button("📥 Load & stage items", key=f"onb_stage_{target.id}"):
+            rows = []
+            for _, r in table.iterrows():
+                name = str(r.get(name_col, "")).strip()
+                if not name:
+                    continue
+                raw_v = str(r.get(vat_col, "")).strip() if has_vat else ""
+                rows.append({
+                    "name": name,
+                    "description": (str(r.get(desc_col, "")).strip() if desc_col in cols else "") or name,
+                    "hsn_code": reference.normalize_hsn(str(r.get(hsn_col, ""))) if hsn_col in cols else "",
+                    "item_category": str(r.get(cat_col, "")).strip() if cat_col in cols else "",
+                    "tax_category": classify_vat(raw_v) if has_vat else VAT_STANDARD,
+                    "is_service": False,
+                    "source_vat": raw_v,
+                })
+            st.session_state[dkey] = rows
+            st.session_state[f"{dkey}_hasvat"] = has_vat
+            st.session_state[f"{dkey}_ver"] = st.session_state.get(f"{dkey}_ver", 0) + 1
+            st.rerun()
+
+    if st.session_state.get(dkey):
+        _render_onboarding_review(store, target, dkey)
+
+
+def _render_onboarding_review(store: MasterStore, target: ClientConfig, dkey: str) -> None:
+    from collections import Counter
+    draft = st.session_state[dkey]
+    has_vat = st.session_state.get(f"{dkey}_hasvat", False)
+    ver = st.session_state.get(f"{dkey}_ver", 0)
+    tax_opts = _tax_category_options(store)
+
+    st.divider()
+    st.subheader(f"Review {len(draft)} item(s)")
+    counts = Counter(d["tax_category"] or "(unset)" for d in draft)
+    st.caption(" · ".join(f"**{k}**: {v}" for k, v in counts.items()))
+    if has_vat:
+        st.info("Your list stated VAT status — it's pre-filled below. Approve or adjust, then load.")
+        unclear = sum(1 for d in draft if not d["tax_category"])
+        if unclear:
+            st.warning(f"{unclear} row(s) had a VAT value we couldn't read — set them before loading.")
+    else:
+        st.info("Your list didn't state VAT status — everything is **Standard VAT**. Mark exceptions below.")
+
+    # Bulk actions (rendered above the editor; they mutate the staged draft).
+    b1, b2, b3 = st.columns([1.4, 2.2, 1.4])
+    if b1.button("Mark ALL as Standard VAT", key=f"onb_allstd_{target.id}"):
+        for d in draft:
+            d["tax_category"] = VAT_STANDARD
+        st.session_state[f"{dkey}_ver"] = ver + 1
+        st.rerun()
+    flt = b2.text_input("Exceptions — filter items (name contains)", key=f"onb_flt_{target.id}")
+    setcat = b3.selectbox("Set matches to", tax_opts, key=f"onb_setcat_{target.id}")
+    if b2.button("Apply to filtered", key=f"onb_apply_{target.id}"):
+        q = flt.strip().lower()
+        n = 0
+        for d in draft:
+            if q and q in d["name"].lower():
+                d["tax_category"] = setcat
+                n += 1
+        st.session_state[f"{dkey}_ver"] = ver + 1
+        st.toast(f"Set {n} item(s) to {setcat}.")
+        st.rerun()
+
+    mode = st.radio("Load mode", ["Append to existing master", "Replace existing master"],
+                    horizontal=True, key=f"onb_mode_{target.id}")
+    base = [] if mode.startswith("Replace") else store.list_items(target.id)
+    codes = assign_item_codes(base, len(draft))
+
+    df = pd.DataFrame([{
+        "item_code": codes[i], "name": d["name"], "hsn_code": d["hsn_code"],
+        "tax_category": d["tax_category"], "is_service": d["is_service"],
+        "item_category": d["item_category"], "description": d["description"],
+    } for i, d in enumerate(draft)])
+    edited = st.data_editor(
+        df, hide_index=True, use_container_width=True, key=f"onb_ed_{target.id}_{ver}",
+        disabled=["item_code", "name"],
+        column_config={
+            "tax_category": st.column_config.SelectboxColumn(options=tax_opts),
+            "is_service": st.column_config.CheckboxColumn(),
+        },
+    )
+    # Persist manual edits back onto the staged draft (row order preserved).
+    for d, r in zip(draft, edited.to_dict("records")):
+        d["tax_category"] = str(r["tax_category"] or "")
+        d["is_service"] = bool(r["is_service"])
+        d["hsn_code"] = reference.normalize_hsn(str(r["hsn_code"])) if str(r["hsn_code"]).strip() else ""
+        d["item_category"] = str(r["item_category"]).strip()
+        d["description"] = str(r["description"]).strip() or d["name"]
+    st.session_state[dkey] = draft
+
+    st.divider()
+    lc1, lc2, lc3 = st.columns([2, 2, 1])
+    if lc1.button(f"✅ Load {len(draft)} items into {target.name}", type="primary", key=f"onb_load_{target.id}"):
+        unclear = [d for d in draft if not d["tax_category"]]
+        if unclear:
+            st.error(f"{len(unclear)} item(s) still have no VAT category — set them first.")
+        else:
+            entries = _onb_entries(draft, codes)
+            if mode.startswith("Replace"):
+                store.seed_items(target.id, entries)
+            else:
+                for e in entries:
+                    store.upsert_item(target.id, e)
+            st.success(f"Loaded {len(entries)} items into {target.name}'s master "
+                       f"({'replaced' if mode.startswith('Replace') else 'appended'}).")
+    lc2.download_button(
+        "⬇️ Download as Digitax items CSV",
+        data=write_items_template(_onb_entries(draft, codes)).encode("utf-8"),
+        file_name=f"{target.id}_items_digitax.csv", mime="text/csv", key=f"onb_dl_{target.id}")
+    if lc3.button("Clear staged list", key=f"onb_clear_{target.id}"):
+        st.session_state.pop(dkey, None)
+        st.rerun()
+
+
+# ---------------------------------------------------------------------------
 # Records / audit trail (admin)
 # ---------------------------------------------------------------------------
 def render_records(store: MasterStore) -> None:
@@ -1082,6 +1318,8 @@ def render_settings(store: MasterStore) -> None:
 
     st.divider()
     st.subheader("Clients")
+    with st.expander("➕ Add a new client"):
+        _render_new_client(store)
     for c in store.list_clients():
         with st.expander(f"{c.name}  ({c.id})"):
             with st.form(f"client_{c.id}"):
@@ -1180,7 +1418,8 @@ def main() -> None:
         clients = [c for c in clients if c.id in allowed_set]
 
     pages = (["Convert", "How-to"] if not admin
-             else ["Convert", "Master data", "Records", "Customer insights", "Clients & settings", "How-to"])
+             else ["Convert", "Master data", "Onboarding", "Records", "Customer insights",
+                   "Clients & settings", "How-to"])
     with st.sidebar:
         st.header("Rabbi Consult")
         if using_database():
@@ -1204,6 +1443,8 @@ def main() -> None:
     elif page == "Master data":
         if client:
             render_masters(store, client)
+    elif page == "Onboarding":
+        render_onboarding(store)
     elif page == "Records":
         render_records(store)
     elif page == "Customer insights":
