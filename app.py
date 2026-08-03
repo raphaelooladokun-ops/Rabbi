@@ -38,7 +38,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.07.15-splititem2"
+APP_VERSION = "v2026.07.15-masterdl"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -698,6 +698,37 @@ def _truthy(text: str) -> bool:
     return str(text).strip().upper() in {"TRUE", "YES", "1", "Y"}
 
 
+def _render_master_download(key: str, entries: list, to_row, writer, filename: str, search_of) -> None:
+    """Pick rows from a master and download them as a Digitax-ready CSV.
+
+    Tick rows to include; if nothing is ticked, everything currently shown (the
+    search-filtered set) is downloaded. ``writer`` is the Digitax template
+    writer for that master, so the file is upload-ready.
+    """
+    if not entries:
+        st.caption("Nothing to download yet — the master is empty.")
+        return
+    q = st.text_input("Filter (name / code / TIN)", key=f"dlq_{key}").strip().lower()
+    filtered = [e for e in entries if not q or q in search_of(e).lower()]
+    if not filtered:
+        st.caption("No rows match that filter.")
+        return
+    st.caption(f"Showing {len(filtered)} of {len(entries)}. Tick rows to include — "
+               "or leave all unticked to download everything shown.")
+    disp = pd.DataFrame([{"✓": False, **to_row(e)} for e in filtered])
+    edited = st.data_editor(
+        disp, hide_index=True, use_container_width=True, key=f"dltbl_{key}",
+        disabled=[c for c in disp.columns if c != "✓"],
+        column_config={"✓": st.column_config.CheckboxColumn(help="Tick to include in the download")},
+    )
+    picks = [e for e, (_, r) in zip(filtered, edited.iterrows()) if bool(r["✓"])]
+    chosen = picks if picks else filtered
+    st.download_button(
+        f"⬇️ Download {len(chosen)} as Digitax CSV", data=writer(chosen).encode("utf-8"),
+        file_name=filename, mime="text/csv", key=f"dlbtn_{key}",
+    )
+
+
 def render_masters(store: MasterStore, client: ClientConfig) -> None:
     st.header(f"Master data — {client.name}")
     items_tab, parties_tab = st.tabs(["Items master", "Parties master"])
@@ -754,6 +785,17 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
                 st.success(f"Imported {len(entries)} items."
                            + (f" ⚠️ {missing_code} have no item_code." if missing_code else ""))
                 st.rerun()
+
+        with st.expander("⬇️ Download selected items as a Digitax CSV"):
+            _render_master_download(
+                key=f"items_{client.id}",
+                entries=items,
+                to_row=lambda e: {"name": e.name, "item_code": e.item_code,
+                                  "hsn_code": e.hsn_code, "tax_category": e.tax_category},
+                writer=write_items_template,
+                filename=f"{client.id}_items_digitax.csv",
+                search_of=lambda e: f"{e.name} {e.item_code} {e.hsn_code} {e.tax_category}",
+            )
 
         st.divider()
         with st.expander(f"⚠️ Clear items master ({len(items)} items) — start afresh"):
@@ -820,6 +862,19 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
                 store.seed_parties(client.id, entries)
                 st.success(f"Imported {len(entries)} parties.")
                 st.rerun()
+
+        with st.expander("⬇️ Download selected customers as a Digitax CSV"):
+            st.caption("The Digitax party template needs a TIN and full address per row — pick your "
+                       "B2B customers here. B2C/cash customers usually aren't uploaded as parties.")
+            _render_master_download(
+                key=f"parties_{client.id}",
+                entries=parties,
+                to_row=lambda e: {"name": e.name, "tin": e.tin, "status": e.status,
+                                  "state": e.state, "local_government": e.local_government},
+                writer=write_parties_template,
+                filename=f"{client.id}_parties_digitax.csv",
+                search_of=lambda e: f"{e.name} {e.tin} {e.status}",
+            )
 
         st.divider()
         with st.expander(f"⚠️ Clear parties master ({len(parties)} customers) — start afresh"):
