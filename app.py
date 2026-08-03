@@ -40,7 +40,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.08.03-onboarding"
+APP_VERSION = "v2026.08.03-onboarding2"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -906,8 +906,8 @@ def _slug(text: str) -> str:
     return re.sub(r"_+", "_", s).strip("_")
 
 
-def _render_new_client(store: MasterStore) -> None:
-    with st.form("new_client"):
+def _render_new_client(store: MasterStore, key: str = "settings") -> None:
+    with st.form(f"new_client_{key}"):
         st.markdown("**Add a new client** — creates its full environment (Convert, Master data, "
                     "Records, insights) automatically.")
         name = st.text_input("Client name")
@@ -969,7 +969,7 @@ def render_onboarding(store: MasterStore) -> None:
                "status (approve all as VATable or mark exceptions), then load it into the client.")
 
     with st.expander("➕ Create a new client (gives it a full environment)"):
-        _render_new_client(store)
+        _render_new_client(store, key="onboarding")
 
     clients = store.list_clients()
     if not clients:
@@ -1348,17 +1348,6 @@ def render_settings(store: MasterStore) -> None:
                     ))
                     st.success("Saved.")
                     st.rerun()
-
-    with st.expander("Add a new client"):
-        with st.form("new_client"):
-            cid = st.text_input("Client id (lowercase, no spaces)")
-            name = st.text_input("Name")
-            reader = st.selectbox("Reader", ["geeta", "friendship", "goldcoin"])
-            b2b = st.checkbox("Has registered B2B customers")
-            if st.form_submit_button("Create client") and cid and name:
-                store.save_client(ClientConfig(id=cid, name=name, reader=reader, b2b_expected=b2b))
-                st.success(f"Created {name}.")
-                st.rerun()
 
 
 # ---------------------------------------------------------------------------
