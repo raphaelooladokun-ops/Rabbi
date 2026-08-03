@@ -38,7 +38,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.07.15-insights2"
+APP_VERSION = "v2026.07.15-splititem"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -112,10 +112,14 @@ def render_convert(store: MasterStore, client: ClientConfig) -> None:
     # available without waiting for hundreds of editor widgets to build.
     n_items = len(_distinct_flagged(result, FlagCode.ITEM_NOT_FOUND, "item_name"))
     n_custs = len(_distinct_flagged(result, FlagCode.CUSTOMER_NOT_FOUND, "customer_name"))
-    if n_items or n_custs:
+    n_shared = len(_shared_code_collisions(result)) if is_admin() else 0
+    if n_items or n_custs or n_shared:
         st.header("🛠 Resolve flagged items & customers")
-        st.caption(f"**{n_items} item(s)** and **{n_custs} customer(s)** aren't in the master yet. "
-                   "Open the workspace to add them (or skip and fix in the downloaded file).")
+        bits = [f"**{n_items} item(s)** and **{n_custs} customer(s)** aren't in the master yet."]
+        if n_shared:
+            bits.append(f"**{n_shared} item code(s)** are shared by different products (admin fix inside).")
+        st.caption(" ".join(bits) + " Open the workspace to resolve them "
+                   "(or skip and fix in the downloaded file).")
         if st.toggle("Open the resolve workspace", key=f"show_resolve_{_run_key()}", value=False):
             _render_create_masters(store, client, result)
         st.divider()
@@ -144,6 +148,18 @@ def _distinct_flagged(result: ProcessResult, code: FlagCode, key: str) -> list[s
     })
 
 
+def _shared_code_collisions(result: ProcessResult) -> dict[str, list[str]]:
+    """Map each item_code that is shared by different item names -> those names."""
+    out: dict[str, set] = {}
+    for iv in result.invoices:
+        for f in iv.all_flags:
+            if f.code == FlagCode.SHARED_ITEM_CODE:
+                code = f.context.get("shared_code", "")
+                if code:
+                    out.setdefault(code, set()).update(f.context.get("colliding_names", ()))
+    return {code: sorted(names) for code, names in out.items()}
+
+
 def _render_exceptions(result: ProcessResult) -> None:
     st.subheader("Lines needing attention")
     report = build_exception_rows(result)
@@ -170,9 +186,62 @@ def _render_exceptions(result: ProcessResult) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Admin: split an item code shared by two different products
+# ---------------------------------------------------------------------------
+def _render_shared_code_fix(store: MasterStore, client: ClientConfig, result: ProcessResult) -> None:
+    collisions = _shared_code_collisions(result)
+    if not collisions:
+        return
+
+    st.markdown("#### ⚠️ Items sharing a code (admin) — split into separate Digitax items")
+    st.caption(
+        "These names resolve to the **same** item_code but are different products, so Digitax "
+        "rejects the invoice. Tick the name(s) that should become a **brand-new distinct item** "
+        "(a fresh ITM_ code, drafted from the shared one). The unticked name keeps the existing "
+        "code. Approve, and the run re-resolves automatically."
+    )
+    picks: list[str] = []
+    for ci, (code, names) in enumerate(collisions.items()):
+        st.markdown(f"**Code `{code}`** — used by {len(names)} different items:")
+        for ni, name in enumerate(names):
+            # Default: keep the first name on the existing code, split the rest.
+            checked = st.checkbox(
+                name, value=(ni != 0), key=f"split_{_run_key()}_{ci}_{ni}",
+                help="Tick = mint a new code for this item" if ni != 0
+                     else "Unticked = keep this item on the existing code",
+            )
+            if checked:
+                picks.append(name)
+
+    if st.button("✳️ Create selected as new distinct items", key=f"splitbtn_{_run_key()}"):
+        if not picks:
+            st.warning("Nothing selected — tick at least one name to give it a new code.")
+            return
+        items_master = store.list_items(client.id)
+        # force_new drafts a fresh code for each picked name (from the nearest
+        # existing item, which is the shared entry), instead of re-matching it.
+        proposals = propose_items(picks, items_master, force_new=picks)
+        created = 0
+        for p in (pp for pp in proposals if pp.kind == "new"):
+            store.upsert_item(client.id, ItemEntry(
+                name=p.name, item_code=p.item_code,
+                hsn_code=reference.normalize_hsn(p.hsn_code),
+                tax_category=p.tax_category_code, item_category=p.item_category,
+                description=p.description or p.name, is_service=p.is_service))
+            created += 1
+        st.success(f"Created {created} new distinct item(s) with fresh codes. Re-resolving…")
+        st.rerun()
+    st.divider()
+
+
+# ---------------------------------------------------------------------------
 # Create missing masters
 # ---------------------------------------------------------------------------
 def _render_create_masters(store: MasterStore, client: ClientConfig, result: ProcessResult) -> None:
+    # Admin-only: split item codes wrongly shared by two different products.
+    if is_admin():
+        _render_shared_code_fix(store, client, result)
+
     unknown_items = _distinct_flagged(result, FlagCode.ITEM_NOT_FOUND, "item_name")
     unknown_custs = _distinct_flagged(result, FlagCode.CUSTOMER_NOT_FOUND, "customer_name")
     if not unknown_items and not unknown_custs:

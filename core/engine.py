@@ -21,7 +21,7 @@ from .config import (
 )
 from .masters import ClientConfig, ItemEntry, MasterStore
 from .models import FlagCode, Flag, LineRow, Severity
-from .parsing import looks_like_tin
+from .parsing import looks_like_tin, normalize_key
 
 # Customer names that are inherently B2C — no party lookup, no flag.
 _CASH_NAMES = {"cash sales", "cash sale", "cash", "walk-in", "walk in customer"}
@@ -338,6 +338,36 @@ def _merge_duplicate_lines(iv: InvoiceSummary) -> None:
         if len(group) == 1 or code.startswith("\0"):
             new_lines.extend(group)
             continue
+
+        # Different source item NAMES resolving to the same code = a masters
+        # mistake (two distinct products share one Digitax item_code, e.g. a
+        # "2kg" and a "400gm" variant). Never merge these — flag so an admin can
+        # mint a fresh code for one of them. Names are compared normalised so
+        # trivial spacing/case differences don't count as distinct.
+        names = []
+        seen_names: set[str] = set()
+        for ln in group:
+            nk = normalize_key(ln.item_name)
+            if nk not in seen_names:
+                seen_names.add(nk)
+                names.append(ln.item_name)
+        if len(names) > 1:
+            base = group[0]
+            listed = ", ".join(f"'{n}'" for n in names)
+            base.add_flag(
+                FlagCode.SHARED_ITEM_CODE,
+                Severity.ERROR,
+                f"Item code {code} is shared by different items: {listed}. They must be "
+                f"separate Digitax items — an admin can give one a new code in "
+                f"'Resolve flagged items & customers'.",
+                "item_code",
+                item_name=base.item_name,
+                shared_code=code,
+                colliding_names=tuple(names),
+            )
+            new_lines.extend(group)
+            continue
+
         by_price: dict[tuple, list[LineRow]] = {}
         price_order: list[tuple] = []
         for ln in group:

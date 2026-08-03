@@ -178,6 +178,33 @@ def test_duplicate_same_item_different_price_flagged_not_merged(store, geeta_cli
     assert iv.ready is False  # blocked for review
 
 
+def test_shared_item_code_across_different_names_flagged(store, geeta_client):
+    # Two different products wrongly share one item_code in the master (the
+    # "2kg" vs "400gm" case). They must never be merged, and the flag carries
+    # the colliding names so the admin split tool can mint a fresh code.
+    store.seed_items("geeta", [
+        ItemEntry(name="Infinity 2kg Custard Jar - White", item_code="ITM_1477", tax_category="STANDARD_VAT"),
+        ItemEntry(name="Infinity 400gm Custard Jar - White", item_code="ITM_1477", tax_category="STANDARD_VAT"),
+    ])
+    rows = [
+        LineRow(source_row=11, invoice_number_raw="3071", customer_name="Cash Sales",
+                item_name="Infinity 2kg Custard Jar - White", quantity=Decimal("1"),
+                unit_price=Decimal("100"), line_value=Decimal("100"), tax_rate=Decimal("0.075")),
+        LineRow(source_row=12, invoice_number_raw="3071", customer_name="Cash Sales",
+                item_name="Infinity 400gm Custard Jar - White", quantity=Decimal("2"),
+                unit_price=Decimal("50"), line_value=Decimal("100"), tax_rate=Decimal("0.075")),
+    ]
+    result = process(rows, geeta_client, store)
+    iv = result.invoices[0]
+    assert FlagCode.SHARED_ITEM_CODE in _codes(result.invoices)
+    assert len(iv.lines) == 2      # not merged — they are different products
+    assert iv.ready is False
+    f = next(fl for fl in iv.all_flags if fl.code == FlagCode.SHARED_ITEM_CODE)
+    assert f.context["shared_code"] == "ITM_1477"
+    assert set(f.context["colliding_names"]) == {
+        "Infinity 2kg Custard Jar - White", "Infinity 400gm Custard Jar - White"}
+
+
 def test_total_mismatch_flagged(store, geeta_client):
     row = LineRow(
         source_row=1, invoice_number_raw="INV-9", customer_name="Cash Sales",
