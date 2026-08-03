@@ -38,7 +38,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.07.15-splititem"
+APP_VERSION = "v2026.07.15-splititem2"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -221,15 +221,21 @@ def _render_shared_code_fix(store: MasterStore, client: ClientConfig, result: Pr
         # force_new drafts a fresh code for each picked name (from the nearest
         # existing item, which is the shared entry), instead of re-matching it.
         proposals = propose_items(picks, items_master, force_new=picks)
+        created_bucket = _bucket("created_items")
         created = 0
         for p in (pp for pp in proposals if pp.kind == "new"):
-            store.upsert_item(client.id, ItemEntry(
+            entry = ItemEntry(
                 name=p.name, item_code=p.item_code,
                 hsn_code=reference.normalize_hsn(p.hsn_code),
                 tax_category=p.tax_category_code, item_category=p.item_category,
-                description=p.description or p.name, is_service=p.is_service))
+                description=p.description or p.name, is_service=p.is_service)
+            store.upsert_item(client.id, entry)
+            # Feed the same bucket the "new items" flow uses, so these codes are
+            # included in the new-items CSV to upload to Digitax.
+            created_bucket[entry.name] = entry
             created += 1
-        st.success(f"Created {created} new distinct item(s) with fresh codes. Re-resolving…")
+        st.success(f"Created {created} new distinct item(s) with fresh codes — they're included in "
+                   "the **new items CSV** below to upload to Digitax. Re-resolving…")
         st.rerun()
     st.divider()
 
