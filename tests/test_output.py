@@ -82,6 +82,21 @@ def test_output_dates_are_processing_date_not_source(store, geeta_client):
     assert all(r["invoice_date"] == today for r in recs2)
 
 
+def test_tax_point_date_is_the_actual_source_invoice_date(store, geeta_client):
+    from datetime import date
+    rows = get_reader("geeta").read(make_tally_xlsx()).rows  # INV-001 = 01/04/2026
+    result = process(rows, geeta_client, store)
+    records = list(csv.DictReader(io.StringIO(
+        write_csv(result.invoices, only_ready=False, doc_date=date(2026, 8, 4)))))
+    by_num = {r["trader_invoice_number"]: r for r in records}
+    inv1 = by_num["INV-001"]
+    # invoice/issue dates = upload day (no backdating); tax point = real date.
+    assert inv1["invoice_date"] == "2026-08-04"
+    assert inv1["issue_date"] == "2026-08-04"
+    assert inv1["tax_point_date(optional)"] == "2026-04-01"
+    assert by_num["INV-002"]["tax_point_date(optional)"] == "2026-04-02"
+
+
 def test_all_export_includes_flagged_with_blank_item_code(store, geeta_client):
     from core.masters import ItemEntry
     store.seed_items("geeta", [ItemEntry(name="Rice 50kg", item_code="ITM_001", tax_category="STANDARD_VAT")])

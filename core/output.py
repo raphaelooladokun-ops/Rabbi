@@ -83,9 +83,12 @@ def _row_dict(
     # export (which includes flagged ones) fall back to the truncated raw
     # number so the row is never blank; the operator fixes it in Excel.
     trader = iv.trader_invoice_number or iv.invoice_number_raw[:TRADER_INVOICE_NUMBER_MAX]
-    # Digitax does not allow backdating: every row carries the processing date
-    # (today), formatted YYYY-MM-DD — not the source invoice date.
+    # Digitax does not allow backdating: invoice_date / issue_date carry the
+    # processing date (today), formatted YYYY-MM-DD. The *actual* invoice date
+    # from the sales register is preserved as the tax_point_date (blank if the
+    # source had no parseable date).
     today = (doc_date or date.today()).isoformat()
+    tax_point = _fmt_date(iv.invoice_date)
     out_qty, out_price = emit_quantity_price(line)
     return {
         "trader_invoice_number": trader,
@@ -96,7 +99,7 @@ def _row_dict(
         "document_currency_code": DOCUMENT_CURRENCY_CODE,
         "party_tin(optional)": party_tin or "",
         "notes(optional)": "",
-        "tax_point_date(optional)": "",
+        "tax_point_date(optional)": tax_point,
         "due_date(optional)": "",
         "accounting_cost(optional)": "",
         "payee_party_tin(optional)": "",
