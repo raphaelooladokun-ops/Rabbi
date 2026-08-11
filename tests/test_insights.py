@@ -1,8 +1,47 @@
 from decimal import Decimal
 
 from core.audit import new_run_id
-from core.insights import customer_stats, records_signature
+from core.insights import customer_stats, records_signature, summarize_report
 from tests.conftest import make_tally_xlsx
+
+
+_REPORT_CSV = (
+    "Date,Time,Invoice Reference Number,Invoice Number,Customer Name,Customer TIN,"
+    "Currency,Taxable Amount,Tax Amount,Payable Amount,Total\n"
+    "09 Aug 2026,3:06:53 PM,REF-1,INV-A,PURECHEM INDUSTRIES,01630676-0001,NGN,18000.00,1350.00,19350.00,19350.00\n"
+    "06 Aug 2026,8:40:08 AM,REF-2,INV-B,PURECHEM INDUSTRIES,01630676-0001,NGN,2000.00,150.00,2150.00,2150.00\n"
+    "05 Aug 2026,1:00:00 PM,REF-3,INV-C,,,NGN,500.00,0.00,500.00,500.00\n"   # blank customer -> skipped
+).encode("utf-8")
+
+
+def test_summarize_report_recognises_digitax_format():
+    s = summarize_report(_REPORT_CSV)
+    assert s["ok"] is True
+    assert s["invoices"] == 2          # the blank-customer row is excluded
+    assert s["customers"] == 1
+    # A non-report CSV is rejected.
+    assert summarize_report(b"foo,bar\n1,2\n")["ok"] is False
+
+
+def test_customer_stats_from_digitax_report(store, geeta_client):
+    run = new_run_id("geeta")
+    store.save_artifact("geeta", run, "digitax_report", "report.csv", _REPORT_CSV, "admin")
+    by_name = {s.customer_name: s for s in customer_stats(store, "geeta")}
+    assert "PURECHEM INDUSTRIES" in by_name
+    pc = by_name["PURECHEM INDUSTRIES"]
+    assert pc.invoices == 2                       # INV-A + INV-B
+    assert pc.total_ex_vat == Decimal("20000.00")  # taxable amounts summed
+    assert pc.kind == "B2B"                        # TIN present in the report
+    assert pc.top_invoice_number == "INV-A"        # bigger taxable amount
+
+
+def test_report_reupload_does_not_double_count(store, geeta_client):
+    store.save_artifact("geeta", new_run_id("geeta"), "digitax_report", "r1.csv", _REPORT_CSV, "admin")
+    before = records_signature(store, "geeta")
+    store.save_artifact("geeta", new_run_id("geeta"), "digitax_report", "r2.csv", _REPORT_CSV, "admin")
+    assert records_signature(store, "geeta") != before
+    pc = {s.customer_name: s for s in customer_stats(store, "geeta")}["PURECHEM INDUSTRIES"]
+    assert pc.invoices == 2   # INV-A/INV-B counted once despite two uploads
 
 
 def test_customer_stats_from_stored_uploads(store, geeta_client):

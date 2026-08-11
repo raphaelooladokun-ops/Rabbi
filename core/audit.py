@@ -17,6 +17,7 @@ KIND_LABELS = {
     "invoices_csv": "Invoices CSV",
     "new_items_csv": "New items CSV",
     "new_parties_csv": "New parties CSV",
+    "digitax_report": "Digitax invoice report",
 }
 
 

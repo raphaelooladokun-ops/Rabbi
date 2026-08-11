@@ -40,7 +40,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.08.04-taxpoint"
+APP_VERSION = "v2026.08.11-reportinsights"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -1196,12 +1196,51 @@ def render_records(store: MasterStore) -> None:
 # ---------------------------------------------------------------------------
 # Customer insights (admin)
 # ---------------------------------------------------------------------------
+def _render_report_upload(store: MasterStore, clients: list) -> None:
+    """Admin: add a Digitax invoice report to a client's insights.
+
+    For clients who create invoices on Digitax directly (not via our converter),
+    their downloaded invoice reports feed the same insights. Each report is kept
+    in Records; invoices are de-duplicated by number, so overlapping months are
+    safe to upload.
+    """
+    with st.expander("➕ Add a Digitax invoice report (for clients who invoice on Digitax directly)"):
+        if not clients:
+            st.info("Create a client first.")
+            return
+        target = st.selectbox("Assign to client", clients,
+                              format_func=lambda c: f"{c.name} ({c.id})", key="rep_client")
+        up = st.file_uploader("Digitax invoice report (CSV)", type=["csv"], key="rep_up")
+        if up is None:
+            return
+        content = up.getvalue()
+        summary = insights.summarize_report(content)
+        if not summary["ok"]:
+            st.error("That doesn't look like a Digitax invoice report — it needs 'Customer Name' "
+                     "and 'Invoice Number' columns.")
+            return
+        st.success(f"Recognised **{summary['invoices']}** invoices across **{summary['customers']}** "
+                   f"named customers.")
+        if st.button(f"Add to {target.name}'s insights", key="rep_add", type="primary"):
+            try:
+                store.save_artifact(target.id, new_run_id(target.id), "digitax_report",
+                                    up.name, content, st.session_state.get("username", ""))
+                st.session_state.pop("_ins_cache", None)  # force recompute
+                st.success(f"Added to {target.name}'s insights and saved in Records.")
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Could not save the report: {exc}")
+
+
 def render_insights(store: MasterStore) -> None:
     st.header("Customer insights")
-    st.caption("Who each client does the most business with, built from the raw sales files already "
-               "kept in Records. This is admin-only and does not touch the client's workflow.")
+    st.caption("Who each client does the most business with, built from the raw sales files kept in "
+               "Records **and** any Digitax invoice reports you add below. Admin-only; it never "
+               "touches the client's workflow.")
 
     clients = store.list_clients()
+    _render_report_upload(store, clients)
+
     options = ["(all clients)"] + [c.id for c in clients]
     top = st.columns([2, 1.4, 1.4, 1])
     sel = top[0].selectbox("Client", options, key="ins_client")
@@ -1223,8 +1262,9 @@ def render_insights(store: MasterStore) -> None:
         stats = cache["stats"]
 
     if not stats:
-        st.info("No stored sales files yet. Insights appear once runs are kept in Records "
-                "(the admin 'Store this run's files' toggle on Convert).")
+        st.info("No data yet for this client. Insights appear once runs are kept in Records "
+                "(the 'Store this run's files' toggle on Convert), or add a Digitax invoice "
+                "report above.")
         return
 
     if include == "B2B only":

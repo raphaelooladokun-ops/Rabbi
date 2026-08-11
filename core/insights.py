@@ -15,9 +15,11 @@ Only runs whose raw file was actually stored (records kept) are covered.
 """
 from __future__ import annotations
 
+import csv
+import io
 from dataclasses import dataclass
-from datetime import date
-from decimal import Decimal
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from .parsing import looks_like_tin
@@ -103,6 +105,96 @@ def _run_rollup(store, art) -> list[dict]:
     return result
 
 
+# -- Digitax invoice reports (for clients who invoice on Digitax directly) ---
+def _report_uploads(store, client_id: Optional[str]):
+    """Yield every stored ``digitax_report`` artifact (newest first)."""
+    for a in store.list_artifacts(client_id):
+        if a.kind == "digitax_report":
+            yield a
+
+
+def _report_date(value: str) -> Optional[date]:
+    s = str(value or "").strip()
+    for fmt in ("%d %b %Y", "%d %B %Y", "%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _report_amount(value: str) -> Decimal:
+    s = str(value or "").strip().replace(",", "")
+    if not s:
+        return Decimal("0")
+    try:
+        return Decimal(s)
+    except InvalidOperation:
+        return Decimal("0")
+
+
+def _parse_report_bytes(content: bytes) -> list[dict]:
+    """Parse a Digitax invoice-report CSV into per-invoice records.
+
+    Uses the report's *Taxable Amount* (pre-VAT, matching the converter's
+    total_ex_vat) and carries the *Customer TIN* so B2B customers are labelled
+    even when they aren't in the parties master. Returns [] if the file is not a
+    recognisable report (missing Customer Name / Invoice Number columns).
+    """
+    out: list[dict] = []
+    try:
+        text = content.decode("utf-8-sig", errors="replace")
+        reader = csv.DictReader(io.StringIO(text))
+        field = {(h or "").strip().lower(): h for h in (reader.fieldnames or [])}
+        c_name = field.get("customer name")
+        c_num = field.get("invoice number") or field.get("invoice reference number")
+        c_tin = field.get("customer tin")
+        c_val = field.get("taxable amount") or field.get("total")
+        c_date = field.get("date")
+        if not (c_name and c_num):
+            return []
+        for row in reader:
+            name = (row.get(c_name) or "").strip()
+            if not name:
+                continue  # blank customer = walk-in, not an identifiable party
+            out.append({
+                "customer": name,
+                "value": _report_amount(row.get(c_val, "")) if c_val else Decimal("0"),
+                "date": _report_date(row.get(c_date, "")) if c_date else None,
+                "number": (row.get(c_num) or "").strip(),
+                "branch": "",
+                "tin": (row.get(c_tin) or "").strip() if c_tin else "",
+            })
+    except Exception:  # noqa: BLE001 — a malformed report must not break the page
+        return []
+    return out
+
+
+def summarize_report(content: bytes) -> dict:
+    """A pre-save preview of a Digitax report: recognised?, #invoices, #customers."""
+    rows = _parse_report_bytes(content)
+    return {
+        "ok": bool(rows),
+        "invoices": len(rows),
+        "customers": len({r["customer"].lower() for r in rows}),
+    }
+
+
+def _report_rollup(store, art) -> list[dict]:
+    """Parse one stored Digitax invoice report into per-invoice records (memoised)."""
+    key = _cache_key(art)
+    cached = _ROLLUP_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        _fname, content = store.read_artifact(art.id)
+        out = _parse_report_bytes(content)
+    except Exception:  # noqa: BLE001
+        out = []
+    _ROLLUP_CACHE[key] = out
+    return out
+
+
 def _kind_for(store, client_id: str, name: str) -> str:
     if name.strip().lower() in _CASH_NAMES:
         return "B2C"
@@ -116,9 +208,12 @@ def _kind_for(store, client_id: str, name: str) -> str:
 
 
 def records_signature(store, client_id: Optional[str] = None) -> tuple:
-    """A cheap fingerprint of the stored uploads, so the UI can cache results
-    and only recompute when the set of records actually changes."""
-    return tuple(sorted(a.id for a in _run_uploads(store, client_id)))
+    """A cheap fingerprint of the stored records, so the UI can cache results
+    and only recompute when the set of records (uploads or Digitax reports)
+    actually changes."""
+    ids = [a.id for a in _run_uploads(store, client_id)]
+    ids += [a.id for a in _report_uploads(store, client_id)]
+    return tuple(sorted(ids))
 
 
 def customer_stats(store, client_id: Optional[str] = None) -> list[CustomerStat]:
@@ -132,12 +227,20 @@ def customer_stats(store, client_id: Optional[str] = None) -> list[CustomerStat]
     # invoice identity -> its captured record. list_artifacts is newest-first,
     # so the first upload to touch an invoice is the most recent; skip older.
     invoices: dict[tuple, dict] = {}
+    # Two sources feed one invoice map: converter uploads and Digitax invoice
+    # reports (for clients who invoice on Digitax directly). Both are newest-
+    # first, so the first record to claim an invoice key wins; their number
+    # formats don't overlap, so they never clash.
     for art in _run_uploads(store, client_id):
         for inv in _run_rollup(store, art):
             ikey = (art.client_id, inv["branch"], inv["number"])
-            if ikey in invoices:
-                continue  # already captured from a newer upload
-            invoices[ikey] = {**inv, "client_id": art.client_id}
+            if ikey not in invoices:
+                invoices[ikey] = {**inv, "client_id": art.client_id}
+    for art in _report_uploads(store, client_id):
+        for inv in _report_rollup(store, art):
+            ikey = (art.client_id, inv["branch"], inv["number"])
+            if ikey not in invoices:
+                invoices[ikey] = {**inv, "client_id": art.client_id}
 
     agg: dict[tuple, dict] = {}
     for inv in invoices.values():
@@ -146,10 +249,12 @@ def customer_stats(store, client_id: Optional[str] = None) -> list[CustomerStat]
         rec = agg.get(key)
         if rec is None:
             rec = {"client_id": cid, "name": name, "count": 0, "total": Decimal("0"),
-                   "first": None, "last": None, "top_val": None, "top_num": ""}
+                   "first": None, "last": None, "top_val": None, "top_num": "", "has_tin": False}
             agg[key] = rec
         rec["count"] += 1
         rec["total"] += inv["value"]
+        if looks_like_tin(inv.get("tin", "")):
+            rec["has_tin"] = True
         if rec["top_val"] is None or inv["value"] > rec["top_val"]:
             rec["top_val"] = inv["value"]
             rec["top_num"] = inv["number"]
@@ -162,7 +267,7 @@ def customer_stats(store, client_id: Optional[str] = None) -> list[CustomerStat]
 
     out = [CustomerStat(
         client_id=rec["client_id"], customer_name=rec["name"],
-        kind=_kind_for(store, rec["client_id"], rec["name"]),
+        kind=_resolve_kind(store, rec["client_id"], rec["name"], rec["has_tin"]),
         invoices=rec["count"], total_ex_vat=rec["total"],
         first_date=rec["first"], last_date=rec["last"],
         top_invoice_number=rec["top_num"],
@@ -170,3 +275,12 @@ def customer_stats(store, client_id: Optional[str] = None) -> list[CustomerStat]
     ) for rec in agg.values()]
     out.sort(key=lambda s: (s.invoices, s.total_ex_vat), reverse=True)
     return out
+
+
+def _resolve_kind(store, client_id: str, name: str, has_tin: bool) -> str:
+    """B2B if the master says so or a report carried a real TIN; else the
+    master's answer ("B2C" or "" unknown)."""
+    k = _kind_for(store, client_id, name)
+    if k == "B2B" or has_tin:
+        return "B2B"
+    return k
