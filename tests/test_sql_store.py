@@ -8,7 +8,20 @@ from core.bootstrap import ensure_default_clients
 from core.masters import ItemEntry, PartyEntry
 
 sqlalchemy = pytest.importorskip("sqlalchemy")
-from core.masters_sql import SqlMasterStore  # noqa: E402
+from core.masters_sql import SqlMasterStore, _normalize_db_url  # noqa: E402
+
+
+def test_normalize_db_url_pins_psycopg3_driver():
+    # Bare Postgres URLs (as Neon hands out) get the psycopg v3 driver.
+    assert _normalize_db_url("postgresql://u:p@h/db?sslmode=require") == \
+        "postgresql+psycopg://u:p@h/db?sslmode=require"
+    assert _normalize_db_url("postgres://u:p@h/db").startswith("postgresql+psycopg://")
+    # An explicit psycopg2 URL is rewritten to the driver we actually ship.
+    assert _normalize_db_url("postgresql+psycopg2://u:p@h/db") == \
+        "postgresql+psycopg://u:p@h/db"
+    # Already-correct and non-Postgres URLs are left untouched.
+    assert _normalize_db_url("postgresql+psycopg://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
+    assert _normalize_db_url("sqlite:///x.db") == "sqlite:///x.db"
 
 
 def _url(tmp_path):

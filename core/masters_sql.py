@@ -99,12 +99,29 @@ artifacts_t = Table(
 )
 
 
+def _normalize_db_url(url: str) -> str:
+    """Pin a Postgres URL to the psycopg (v3) driver.
+
+    We ship psycopg v3 (``import psycopg``), which has wheels for current
+    Pythons; psycopg2 does not (e.g. Python 3.14). Neon and most providers hand
+    out a bare ``postgres://`` / ``postgresql://`` URL whose default driver is
+    psycopg2, so we rewrite the scheme to ``postgresql+psycopg://`` to force the
+    driver we actually install. Non-Postgres URLs (e.g. sqlite for tests) are
+    left untouched.
+    """
+    for prefix in ("postgres://", "postgresql://", "postgresql+psycopg2://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
 class SqlMasterStore:
     """Drop-in, database-backed replacement for ``MasterStore``."""
 
     def __init__(self, database_url: str):
         # pool_pre_ping keeps connections healthy across a host's idle naps.
-        self.engine: Engine = create_engine(database_url, pool_pre_ping=True, future=True)
+        self.engine: Engine = create_engine(
+            _normalize_db_url(database_url), pool_pre_ping=True, future=True)
         _metadata.create_all(self.engine)
         # In-memory per-client caches so the engine doesn't hit the database
         # once per invoice line (900+ round-trips) or re-fetch an 8k master on

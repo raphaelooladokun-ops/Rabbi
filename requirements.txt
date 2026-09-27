@@ -4,4 +4,5 @@ openpyxl>=3.1
 xlrd>=2.0.1
 SQLAlchemy>=2.0
 # Postgres driver — only needed when DATABASE_URL points at Postgres (hosted).
-psycopg2-binary>=2.9
+# psycopg v3 (has wheels for current Python, incl. 3.14; psycopg2 does not).
+psycopg[binary]>=3.1
