@@ -40,6 +40,15 @@ def test_next_item_codes_from_empty_master():
     assert next_item_codes([], 2) == ["ITM_001", "ITM_002"]
 
 
+def test_next_item_codes_preserve_variant_marker():
+    # A master built from a corrected -N re-upload keeps continuing with -N.
+    items = [
+        ItemEntry(name="A", item_code="ITM_001-N", tax_category="STANDARD_VAT"),
+        ItemEntry(name="B", item_code="ITM_002-N", tax_category="STANDARD_VAT"),
+    ]
+    assert next_item_codes(items, 2) == ["ITM_003-N", "ITM_004-N"]
+
+
 def test_propose_items_separates_matches_from_new():
     unknown = ["TIGER BLADE ", "FORMAMIDE AR GRADE 2.5L", "BRAND NEW WIDGET"]
     props = propose_items(unknown, _items())

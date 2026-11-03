@@ -40,7 +40,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.09.27-psycopg3"
+APP_VERSION = "v2026.11.03-variant"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -952,10 +952,16 @@ def _guess_col(cols: list[str], aliases: list[str]) -> str:
     return ""
 
 
-def _onb_entries(draft: list[dict], codes: list[str]) -> list:
-    """Build ItemEntry objects from the staged draft + assigned codes."""
+def _onb_entries(draft: list[dict], codes: list[str], name_suffix: str = "") -> list:
+    """Build ItemEntry objects from the staged draft + assigned codes.
+
+    ``name_suffix`` (e.g. "-N") is appended to the item NAME only — used for the
+    Digitax upload file of a corrected re-upload. The master keeps the plain
+    name (so the raw sales register still matches); the codes already carry the
+    variant marker.
+    """
     return [ItemEntry(
-        name=d["name"], item_code=codes[i],
+        name=d["name"] + name_suffix, item_code=codes[i],
         hsn_code=reference.normalize_hsn(d["hsn_code"]),
         tax_category=d["tax_category"] or "STANDARD_VAT",
         item_category=d["item_category"], description=d["description"] or d["name"],
@@ -1074,8 +1080,15 @@ def _render_onboarding_review(store: MasterStore, target: ClientConfig, dkey: st
 
     mode = st.radio("Load mode", ["Append to existing master", "Replace existing master"],
                     horizontal=True, key=f"onb_mode_{target.id}")
+    variant = st.text_input(
+        "Corrected-upload variant suffix (optional, e.g. -N)", key=f"onb_var_{target.id}",
+        help="Use when re-uploading corrected items to Digitax because you can't edit the "
+             "originals. It's appended to the item CODE (so the new codes don't clash with the "
+             "originals in Digitax) and, on the Digitax download, to the item NAME. The master "
+             "keeps the plain name, so the client's raw sales register still matches.",
+    ).strip()
     base = [] if mode.startswith("Replace") else store.list_items(target.id)
-    codes = assign_item_codes(base, len(draft))
+    codes = assign_item_codes(base, len(draft), suffix=variant)
 
     df = pd.DataFrame([{
         "item_code": codes[i], "name": d["name"], "hsn_code": d["hsn_code"],
@@ -1116,11 +1129,17 @@ def _render_onboarding_review(store: MasterStore, target: ClientConfig, dkey: st
                        f"({'replaced' if mode.startswith('Replace') else 'appended'}).")
     lc2.download_button(
         "⬇️ Download as Digitax items CSV",
-        data=write_items_template(_onb_entries(draft, codes)).encode("utf-8"),
-        file_name=f"{target.id}_items_digitax.csv", mime="text/csv", key=f"onb_dl_{target.id}")
+        data=write_items_template(_onb_entries(draft, codes, name_suffix=variant)).encode("utf-8"),
+        file_name=f"{target.id}_items_digitax{'_' + variant.strip('-') if variant else ''}.csv",
+        mime="text/csv", key=f"onb_dl_{target.id}")
     if lc3.button("Clear staged list", key=f"onb_clear_{target.id}"):
         st.session_state.pop(dkey, None)
         st.rerun()
+    if variant:
+        st.caption(f"Variant **{variant}** active: the master stores plain names with codes like "
+                   f"`{codes[0]}`; the Digitax download names them like "
+                   f"`{draft[0]['name']}{variant}` — same codes, so invoices resolve to the "
+                   "corrected items while the raw register keeps matching.")
 
 
 # ---------------------------------------------------------------------------

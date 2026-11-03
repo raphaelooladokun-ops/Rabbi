@@ -69,6 +69,14 @@ def classify_vat(value) -> str:
     return ""
 
 
-def assign_item_codes(existing_items, count: int) -> list[str]:
-    """The next ``count`` ITM_ codes continuing the client's sequence."""
-    return next_item_codes(existing_items, count)
+def assign_item_codes(existing_items, count: int, suffix: str = "") -> list[str]:
+    """The next ``count`` ITM_ codes continuing the client's sequence.
+
+    ``suffix`` (e.g. "-N") marks a corrected re-upload so the new codes can't
+    clash with the originals already in Digitax. It is appended once (codes that
+    already carry it — because the master was built with it — are left as-is).
+    """
+    codes = next_item_codes(existing_items, count)
+    if suffix:
+        codes = [c if c.endswith(suffix) else c + suffix for c in codes]
+    return codes

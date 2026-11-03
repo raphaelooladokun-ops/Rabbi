@@ -36,3 +36,14 @@ def test_assign_item_codes_continues_client_sequence():
     existing = [ItemEntry(name="A", item_code="ITM_014", tax_category=STANDARD)]
     assert assign_item_codes(existing, 3) == ["ITM_015", "ITM_016", "ITM_017"]
     assert assign_item_codes([], 2) == ["ITM_001", "ITM_002"]
+
+
+def test_assign_item_codes_with_variant_suffix():
+    # Fresh catalogue gets -N codes that won't clash with the originals.
+    assert assign_item_codes([], 3, suffix="-N") == ["ITM_001-N", "ITM_002-N", "ITM_003-N"]
+    # Base codes are plain -> suffix appended once.
+    base = [ItemEntry(name="A", item_code="ITM_014", tax_category=STANDARD)]
+    assert assign_item_codes(base, 2, suffix="-N") == ["ITM_015-N", "ITM_016-N"]
+    # Base already carries the marker -> continues it without doubling.
+    varbase = [ItemEntry(name="A", item_code="ITM_014-N", tax_category=STANDARD)]
+    assert assign_item_codes(varbase, 1, suffix="-N") == ["ITM_015-N"]

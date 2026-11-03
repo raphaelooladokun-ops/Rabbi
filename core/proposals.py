@@ -92,32 +92,35 @@ def fuzzy_best_item(name: str, items: list[ItemEntry]) -> tuple[Optional[ItemEnt
     return _best_match(target, cands, SequenceMatcher())
 
 
-_CODE_RE = re.compile(r"^(.*?)(\d+)\s*$")
+# prefix, digits, then an optional trailing marker (e.g. the "-N" of a
+# corrected re-upload). The marker is preserved so ITM_001-N continues -N.
+_CODE_RE = re.compile(r"^(.*?)(\d+)([^\d\s]*)\s*$")
 
 
-def _parse_code(code: str) -> Optional[tuple[str, int, int]]:
-    """Split 'ITM_001' -> ('ITM_', 1, 3) = (prefix, number, zero-pad width)."""
+def _parse_code(code: str) -> Optional[tuple[str, int, int, str]]:
+    """Split 'ITM_001-N' -> ('ITM_', 1, 3, '-N') = (prefix, number, width, marker)."""
     m = _CODE_RE.match(str(code).strip())
     if not m:
         return None
-    return m.group(1), int(m.group(2)), len(m.group(2))
+    return m.group(1), int(m.group(2)), len(m.group(2)), m.group(3)
 
 
 def next_item_codes(items: list[ItemEntry], count: int) -> list[str]:
-    """Continue the client's existing code sequence, same prefix/width.
+    """Continue the client's existing code sequence, same prefix/width/marker.
 
-    Uses the dominant prefix among existing codes and the highest number in
-    that prefix; pads to the widest existing number so the format matches.
+    Groups existing codes by (prefix, trailing marker), takes the dominant group
+    and its highest number, and continues it — so a master of ITM_001-N … codes
+    yields ITM_002-N … rather than restarting.
     """
     parsed = [p for p in (_parse_code(e.item_code) for e in items if e.item_code) if p]
     if parsed:
-        prefix = Counter(p[0] for p in parsed).most_common(1)[0][0]
-        same = [p for p in parsed if p[0] == prefix]
+        prefix, marker = Counter((p[0], p[3]) for p in parsed).most_common(1)[0][0]
+        same = [p for p in parsed if (p[0], p[3]) == (prefix, marker)]
         start = max(p[1] for p in same)
         width = max(p[2] for p in same)
     else:
-        prefix, start, width = "ITM_", 0, 3
-    return [f"{prefix}{str(start + i).zfill(width)}" for i in range(1, count + 1)]
+        prefix, marker, start, width = "ITM_", "", 0, 3
+    return [f"{prefix}{str(start + i).zfill(width)}{marker}" for i in range(1, count + 1)]
 
 
 def _most_common(values: Iterable[str]) -> str:
