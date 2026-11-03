@@ -30,6 +30,7 @@ class FlagCode(str, Enum):
     """The fixed set of exception reasons surfaced on the review screen."""
 
     CUSTOMER_NOT_FOUND = "customer_not_found"
+    CUSTOMER_MISMATCH = "customer_mismatch"
     ITEM_NOT_FOUND = "item_not_found"
     DUPLICATE_ITEM = "duplicate_item"
     SHARED_ITEM_CODE = "shared_item_code"
@@ -97,6 +98,11 @@ class LineRow:
     unit_price: Optional[Decimal] = None
     line_value: Optional[Decimal] = None  # VAT-exclusive line subtotal
     tax_rate: Optional[Decimal] = None  # e.g. Decimal("0.075"); 0 for exempt
+    # Some registers (e.g. Eurochemco) state only a single VAT-INCLUSIVE amount
+    # per line and no tax column, so the VAT can only be backed out once the
+    # item's rate is known from the master. The reader puts the gross amount
+    # here; the engine derives line_value/unit_price after resolving the rate.
+    gross_amount: Optional[Decimal] = None
 
     # --- Invoice-level reconciliation -------------------------------------
     # The invoice's stated total as carried on the source, forward-filled

@@ -185,6 +185,14 @@ def _resolve_item(row: LineRow, client: ClientConfig, store: MasterStore) -> Non
         else:
             row.tax_rate = rate
 
+    # VAT-inclusive source amount (e.g. Eurochemco): now that the rate is known,
+    # back out the VAT to the ex-VAT line value / unit price the output needs.
+    if row.gross_amount is not None and row.tax_rate is not None and row.unit_price is None:
+        rate = row.tax_rate
+        qty = row.quantity if row.quantity else Decimal("1")
+        row.line_value = row.gross_amount / (Decimal("1") + rate)
+        row.unit_price = row.line_value / qty
+
 
 # -- party / TIN resolution -------------------------------------------------
 def _resolve_party(row: LineRow, client: ClientConfig, store: MasterStore) -> None:
@@ -272,6 +280,20 @@ def _group_invoices(rows: list[LineRow]) -> list[InvoiceSummary]:
     invoices = [by_key[k] for k in order]
     for iv in invoices:
         _set_invoice_stated_total(iv)
+        # A single invoice number shared by two different customers means a
+        # reused voucher in the source — never silently attribute both sales to
+        # one party; surface it for the operator.
+        names = {ln.customer_name.strip() for ln in iv.lines if ln.customer_name.strip()}
+        if len(names) > 1:
+            iv.add_flag(
+                FlagCode.CUSTOMER_MISMATCH,
+                Severity.ERROR,
+                f"Invoice number '{iv.invoice_number_raw}' is used by more than one customer "
+                f"({', '.join(sorted(names))}); the voucher is reused in the source — give each "
+                "sale its own number before exporting.",
+                "trader_invoice_number",
+                customer_name=iv.customer_name,
+            )
     # invoice_kind: B2B if any line resolved to B2B with a TIN.
     for iv in invoices:
         b2b = next((ln for ln in iv.lines if ln.invoice_kind == "B2B" and ln.customer_tin), None)

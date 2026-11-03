@@ -5,12 +5,14 @@ from .base import Reader, ReadResult
 from .geeta import GeetaReader
 from .friendship import FriendshipReader
 from .goldcoin import GoldcoinReader
+from .eurochemco import EurochemcoReader
 
 # Registry keyed by ClientConfig.reader.
 READERS: dict[str, type[Reader]] = {
     "geeta": GeetaReader,
     "friendship": FriendshipReader,
     "goldcoin": GoldcoinReader,
+    "eurochemco": EurochemcoReader,
 }
 
 
@@ -29,6 +31,7 @@ __all__ = [
     "GeetaReader",
     "FriendshipReader",
     "GoldcoinReader",
+    "EurochemcoReader",
     "READERS",
     "get_reader",
 ]
