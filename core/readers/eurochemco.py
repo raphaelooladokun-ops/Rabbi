@@ -64,6 +64,18 @@ def _branch(vch_type: str) -> Optional[str]:
     return b or (vch_type or None)
 
 
+def _branch_prefix(branch: Optional[str]) -> str:
+    """Initials of each part of a branch name, to prefix the invoice number so
+    numbers can't collide across locations:
+        'Kano' -> 'K'   'Lagos - Ilupeju' -> 'LI'
+        'Lagos-Mangoro' -> 'LM'   'Dir.Del.' -> 'DD'
+    """
+    if not branch:
+        return ""
+    parts = [p for p in re.split(r"[^0-9a-zA-Z]+", branch) if p]
+    return "".join(p[0].upper() for p in parts)
+
+
 def parse_eurochemco(source: Source, *, sheet_name: Union[str, int, None] = None) -> ReadResult:
     buf = io.BytesIO(source) if isinstance(source, (bytes, bytearray)) else source
     try:
@@ -109,9 +121,11 @@ def parse_eurochemco(source: Source, *, sheet_name: Union[str, int, None] = None
         if row_date is not None and vno:
             ctx_date = row_date
             ctx_customer = particulars
-            ctx_vno = vno
             vtype = clean_str(cell(grid, r, cols["vch_type"])) if cols["vch_type"] is not None else ""
             ctx_branch = _branch(vtype)
+            # Prefix the invoice number with the branch initials so Kano's 53149
+            # and Lagos-Ilupeju's 53149 become K53149 / LI53149 — unique in Digitax.
+            ctx_vno = _branch_prefix(ctx_branch) + vno
             try:
                 ctx_total = parse_decimal(cell(grid, r, cols["debit"]), field="total") \
                     if cols["debit"] is not None else None

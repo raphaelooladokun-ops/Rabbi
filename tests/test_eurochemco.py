@@ -74,7 +74,7 @@ def test_ecvl_backs_out_vat_with_quantity(store):
     result = process(rows, client, store)
     inv = {(iv.branch, iv.invoice_number_raw): iv for iv in result.invoices}
 
-    awala = inv[("Kano", "53151")]
+    awala = inv[("Kano", "K53151")]
     assert len(awala.lines) == 2  # two items, group row dropped
     tol = [l for l in awala.lines if l.item_code == "ITM_T"][0]
     assert tol.tax_rate == Decimal("0.075")
@@ -93,7 +93,16 @@ def test_ecvl_branch_disambiguates_and_reused_number_flagged(store):
     rows = get_reader("eurochemco").read(make_ecvl_xlsx()).rows
     result = process(rows, client, store)
     keys = {(iv.branch, iv.invoice_number_raw) for iv in result.invoices}
-    # same number 53151 across two branches = two distinct invoices, no false flag
-    assert ("Kano", "53151") in keys and ("Lagos - Ilupeju", "53151") in keys
+    # same number 53151 across two branches -> prefixed distinctly (K vs LI)
+    assert ("Kano", "K53151") in keys and ("Lagos - Ilupeju", "LI53151") in keys
     # 53160 reused by two customers in the SAME branch -> flagged
     assert FlagCode.CUSTOMER_MISMATCH in _codes(result.invoices)
+
+
+def test_ecvl_branch_prefix_mapping():
+    from core.readers.eurochemco import _branch_prefix
+    assert _branch_prefix("Kano") == "K"
+    assert _branch_prefix("Lagos - Ilupeju") == "LI"
+    assert _branch_prefix("Lagos-Mangoro") == "LM"
+    assert _branch_prefix("Dir.Del.") == "DD"
+    assert _branch_prefix("") == ""
