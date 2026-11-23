@@ -1,114 +1,152 @@
-"""Reader D — Eurochemco (ECVL) flat "Sales Register" export.
+"""Reader D — Eurochemco (ECVL) Tally "Sales Register" export (.xlsx).
 
-A one-line-per-sale register with a short title block then a table:
+A three-level Tally layout:
 
-    DATE | PARTICULARS (customer) | PRODUCTS (item) | VCH NUMBER | AMOUNT | TIN
+    Date | Particulars | Qty | Rate | Value | … | Vch Type | Vch No. | Debit | …
+    (parent)  customer                                 branch     number   total
+    (group)   "Toluene Sales"            (subtotal)
+    (item)    item name   qty   rate   value
 
-There is no quantity and no tax column, and ``AMOUNT`` is **VAT-inclusive**.
-So each row is modelled as a single unit (quantity = 1) carrying the gross
-amount; the engine backs out the VAT once the item's rate is known from the
-master (STANDARD → ÷1.075, EXEMPTED/ZERO → unchanged). The customer TIN in the
-file is only a hint — the output TIN always comes from the parties master.
+The quantity/rate/value sit in the (unlabelled) columns right after
+Particulars; ``Value`` and the parent ``Debit`` are **VAT-inclusive**. There is
+no tax column, so each item line carries its gross value and the engine backs
+out the VAT once the item's rate is known from the master (STANDARD → ÷1.075,
+EXEMPTED/ZERO → unchanged), reconciling against the parent's stated gross.
 """
 from __future__ import annotations
 
+import io
+import re
 from decimal import Decimal
 from typing import Optional, Union
 
-from ..models import FlagCode, LineRow, Severity
-from ..parsing import ParseError, clean_str, is_blank, looks_like_tin, parse_date, parse_decimal
-from .base import Reader, ReadResult, Source, cell, load_grid
+import pandas as pd
 
-# Header label -> internal name, matched as a case-insensitive substring.
-_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
-    "date": ("date",),
-    "customer": ("particulars", "customer"),
-    "product": ("products", "product", "description"),
-    "voucher": ("vch number", "vch no", "voucher", "invoice"),
-    "amount": ("amount", "value", "total"),
-    "tin": ("tin", "vat no"),
-}
+from ..models import FlagCode, LineRow, Severity
+from ..parsing import ParseError, clean_str, is_blank, parse_date, parse_decimal
+from .base import Reader, ReadResult, Source, cell
 
 
 def _find_header(grid, scan_rows: int = 25) -> tuple[int, dict[str, int]]:
-    """Locate the table header row and map internal names -> column indices.
+    """Locate the header row and map internal names -> column indices.
 
-    The header is the row (within the first ``scan_rows``) matching the most
-    known labels; it must include the customer, product and amount columns.
+    Quantity/Rate/Value are the three (often unlabelled) columns immediately
+    after Particulars, so they are taken positionally.
     """
-    best_row, best_map, best_score = -1, {}, 0
     for r in range(min(scan_rows, len(grid))):
-        colmap: dict[str, int] = {}
-        for c in range(grid.shape[1]):
-            text = clean_str(cell(grid, r, c)).lower()
-            if not text:
-                continue
-            for name, aliases in _HEADER_ALIASES.items():
-                if name not in colmap and any(a in text for a in aliases):
-                    colmap[name] = c
-        score = len(colmap)
-        if score > best_score and {"customer", "product", "amount"} <= set(colmap):
-            best_row, best_map, best_score = r, colmap, score
-    if best_row < 0:
-        raise ValueError(
-            "Could not find a Eurochemco sales-register header "
-            "(expected columns including 'Particulars', 'Products' and 'Amount')."
-        )
-    return best_row, best_map
+        labels = {clean_str(cell(grid, r, c)).lower(): c for c in range(grid.shape[1])}
+        part = next((labels[k] for k in labels if "particular" in k), None)
+        vno = next((labels[k] for k in labels if "vch no" in k or "voucher no" in k), None)
+        if part is None or vno is None:
+            continue
+        cols = {
+            "date": next((labels[k] for k in labels if "date" in k), 0),
+            "particulars": part,
+            "quantity": part + 1,
+            "rate": part + 2,
+            "value": part + 3,
+            "vch_type": next((labels[k] for k in labels if "vch type" in k or "voucher type" in k), None),
+            "vch_no": vno,
+            "debit": next((labels[k] for k in labels if "debit" in k), None),
+        }
+        if cols["value"] < grid.shape[1]:
+            return r, cols
+    raise ValueError(
+        "Could not find a Eurochemco sales-register header "
+        "(expected a Tally register with 'Particulars' and 'Vch No.' columns)."
+    )
 
 
-def parse_eurochemco(source: Source, *, sheet_name: Union[str, int, None] = 0) -> ReadResult:
-    grid = load_grid(source, sheet_name=sheet_name)
+def _branch(vch_type: str) -> Optional[str]:
+    """'Sales - Kano' -> 'Kano'; part of the invoice key so numbers that repeat
+    across locations stay distinct."""
+    b = re.sub(r"^\s*sales\s*-\s*", "", vch_type, flags=re.I).strip()
+    return b or (vch_type or None)
+
+
+def parse_eurochemco(source: Source, *, sheet_name: Union[str, int, None] = None) -> ReadResult:
+    buf = io.BytesIO(source) if isinstance(source, (bytes, bytearray)) else source
     try:
-        header_row, cols = _find_header(grid)
-    except ValueError as exc:
-        return ReadResult(rows=[], file_errors=[str(exc)])
+        xls = pd.ExcelFile(buf)
+    except Exception as exc:  # noqa: BLE001
+        return ReadResult(rows=[], file_errors=[f"Could not open the workbook: {exc}"])
+
+    sheets = xls.sheet_names if sheet_name is None else [sheet_name]
+    grid = None
+    header_row = -1
+    cols: dict[str, int] = {}
+    for sname in sheets:
+        g = pd.read_excel(xls, sheet_name=sname, header=None, dtype=object)
+        try:
+            header_row, cols = _find_header(g)
+            grid, sheet_name = g, sname
+            break
+        except ValueError:
+            continue
+    if grid is None:
+        return ReadResult(rows=[], file_errors=[
+            "Could not find a Eurochemco sales-register header "
+            "(expected a Tally register with 'Particulars' and 'Vch No.' columns)."])
 
     rows: list[LineRow] = []
+    ctx_date = ctx_customer = ctx_vno = None
+    ctx_branch: Optional[str] = None
+    ctx_total: Optional[Decimal] = None
+
     for r in range(header_row + 1, len(grid)):
         sheet_row = r + 1  # 1-based for the operator
-        customer = clean_str(cell(grid, r, cols.get("customer")))
-        product = clean_str(cell(grid, r, cols.get("product")))
-        voucher = clean_str(cell(grid, r, cols.get("voucher")))
-        amount_raw = cell(grid, r, cols.get("amount"))
-
-        # Skip blank spacer rows and the trailing TOTAL row (which has an amount
-        # but no product/voucher, and usually 'TOTAL' in the customer column).
-        if customer.upper() == "TOTAL":
-            continue
-        if not product and not voucher:
-            continue
-        if not customer and not product:
+        particulars = clean_str(cell(grid, r, cols["particulars"]))
+        if not particulars or particulars.lower() in {"grand total", "total"}:
             continue
 
         try:
-            invoice_date = parse_date(cell(grid, r, cols.get("date")), field="date")
+            row_date = parse_date(cell(grid, r, cols["date"]), field="date")
         except ParseError:
-            invoice_date = None
-        tin = clean_str(cell(grid, r, cols.get("tin")))
+            row_date = None
+        vno = clean_str(cell(grid, r, cols["vch_no"])) if cols["vch_no"] is not None else ""
+
+        # --- Parent / invoice-header row (has a date and a voucher number) ---
+        if row_date is not None and vno:
+            ctx_date = row_date
+            ctx_customer = particulars
+            ctx_vno = vno
+            vtype = clean_str(cell(grid, r, cols["vch_type"])) if cols["vch_type"] is not None else ""
+            ctx_branch = _branch(vtype)
+            try:
+                ctx_total = parse_decimal(cell(grid, r, cols["debit"]), field="total") \
+                    if cols["debit"] is not None else None
+            except ParseError:
+                ctx_total = None
+            continue
+
+        # --- Item line (has quantity and value); group subtotal rows have neither ---
+        qty_raw = cell(grid, r, cols["quantity"])
+        val_raw = cell(grid, r, cols["value"])
+        if is_blank(qty_raw) or is_blank(val_raw):
+            continue  # group/subtotal/blank row
+        if ctx_vno is None:
+            continue  # item before any invoice header — skip defensively
 
         row = LineRow(
             source_row=sheet_row,
             sheet=str(sheet_name),
-            invoice_number_raw=voucher,
-            invoice_date=invoice_date,
-            customer_name=customer,
-            customer_tin_hint=tin if looks_like_tin(tin) else "",
-            item_name=product,
-            quantity=Decimal("1"),  # register states no quantity
-            stated_total_includes_vat=True,  # AMOUNT is VAT-inclusive
-            stated_total_is_per_line=True,
-            raw={"amount": amount_raw, "voucher": voucher},
+            invoice_number_raw=ctx_vno,
+            branch=ctx_branch,
+            invoice_date=ctx_date,
+            customer_name=ctx_customer or "",
+            item_name=particulars,
+            invoice_stated_total=ctx_total,       # VAT-inclusive parent total
+            stated_total_includes_vat=True,
+            raw={"quantity": qty_raw, "value": val_raw},
         )
         try:
-            gross = parse_decimal(amount_raw, field="amount")
+            row.quantity = parse_decimal(qty_raw, field="quantity")
+        except ParseError as exc:
+            row.add_flag(FlagCode.BROKEN_SOURCE_VALUE, Severity.ERROR, str(exc), "quantity")
+        try:
+            row.gross_amount = parse_decimal(val_raw, field="value")  # VAT-inclusive line value
         except ParseError as exc:
             row.add_flag(FlagCode.BROKEN_SOURCE_VALUE, Severity.ERROR, str(exc), "unit_price")
-            gross = None
-        if gross is not None:
-            row.gross_amount = gross
-            row.invoice_stated_total = gross  # reconcile against the stated gross
-
         rows.append(row)
 
     return ReadResult(rows=rows, file_errors=[])
@@ -118,5 +156,5 @@ class EurochemcoReader(Reader):
     default_sheet = 0
 
     def read(self, source: Source, *, sheet_name: Union[str, int, None] = None) -> ReadResult:
-        sheet = self.default_sheet if sheet_name is None else sheet_name
-        return parse_eurochemco(source, sheet_name=sheet)
+        # sheet_name=None lets the reader scan every sheet for the register.
+        return parse_eurochemco(source, sheet_name=sheet_name)

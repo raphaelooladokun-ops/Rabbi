@@ -45,10 +45,16 @@ def is_blank(value: Any) -> bool:
 
 
 def clean_str(value: Any) -> str:
-    """Return a trimmed string, collapsing internal whitespace runs."""
+    """Return a trimmed string, collapsing internal whitespace runs.
+
+    Also drops ``_x000D_`` — the literal escape Excel/openpyxl leaves where a
+    cell contained a carriage return — so a product name split across lines in
+    the source still matches the master.
+    """
     if is_blank(value):
         return ""
-    return re.sub(r"\s+", " ", str(value)).strip()
+    text = re.sub(r"_x000[dD]_", " ", str(value))
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def parse_decimal(value: Any, *, field: str = "value") -> Optional[Decimal]:
