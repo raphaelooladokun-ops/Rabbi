@@ -127,3 +127,25 @@ def parse_date(value: Any, *, field: str = "date") -> Optional[date]:
 def normalize_key(value: Any) -> str:
     """Canonical key for master lookups: case/space-insensitive."""
     return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+
+# Generic company words dropped when comparing company names, so that e.g.
+# "MDV INDS LTD" and "MDV INDUSTRIES LIMITED" reduce to the same core. This is
+# used only for an UNAMBIGUOUS fallback match (never fuzzy), so it can never
+# attach the wrong TIN.
+_COMPANY_NOISE = {
+    "ltd", "limited", "plc", "nig", "nigeria", "company", "co", "coy",
+    "enterprises", "enterprise", "ventures", "venture", "international", "intl",
+    "industries", "industry", "inds", "ind", "industrial", "and", "the",
+}
+
+
+def company_core(value: Any) -> str:
+    """Reduce a company name to its distinctive core for matching.
+
+    Lower-cases, drops punctuation and the generic words above. Returns '' when
+    nothing distinctive remains (so it never matches on noise alone).
+    """
+    s = re.sub(r"[^a-z0-9 ]+", " ", str(value or "").lower())
+    toks = [t for t in s.split() if t and t not in _COMPANY_NOISE]
+    return " ".join(toks)

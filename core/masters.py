@@ -15,7 +15,20 @@ from pathlib import Path
 from typing import Optional
 
 from .config import DEFAULT_TAX_RATES, INVOICE_TYPE_CODE
-from .parsing import normalize_key
+from .parsing import company_core, normalize_key
+
+
+def _build_core_index(parties: list) -> dict:
+    """Map each company-core -> the single party with it. Cores shared by more
+    than one party are AMBIGUOUS and left out, so a fallback match is only ever
+    made when the company is uniquely identified (it can't attach a wrong TIN).
+    """
+    buckets: dict[str, list] = {}
+    for e in parties:
+        core = company_core(e.name)
+        if core:
+            buckets.setdefault(core, []).append(e)
+    return {core: lst[0] for core, lst in buckets.items() if len(lst) == 1}
 
 DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "clients"
 
@@ -216,16 +229,17 @@ class MasterStore:
             )
 
     # -- parties -----------------------------------------------------------
-    def _parties_indexed(self, client_id: str) -> tuple[list[PartyEntry], dict]:
+    def _parties_indexed(self, client_id: str) -> tuple[list[PartyEntry], dict, dict]:
         path = self._parties_path(client_id)
         mtime = self._mtime(path)
         cached = self._parties_cache.get(client_id)
         if cached and cached[0] == mtime:
-            return cached[1], cached[2]
+            return cached[1], cached[2], cached[3]
         parties = [PartyEntry(**e) for e in self._read_json(path, [])]
         name_idx = {normalize_key(e.name): e for e in parties}
-        self._parties_cache[client_id] = (mtime, parties, name_idx)
-        return parties, name_idx
+        core_idx = _build_core_index(parties)
+        self._parties_cache[client_id] = (mtime, parties, name_idx, core_idx)
+        return parties, name_idx, core_idx
 
     def list_parties(self, client_id: str) -> list[PartyEntry]:
         return list(self._parties_indexed(client_id)[0])
@@ -234,7 +248,14 @@ class MasterStore:
         key = normalize_key(name)
         if not key:
             return None
-        return self._parties_indexed(client_id)[1].get(key)
+        _parties, name_idx, core_idx = self._parties_indexed(client_id)
+        hit = name_idx.get(key)
+        if hit is not None:
+            return hit
+        # Safe fallback: the same company written differently (Ltd/Nig/INDS…),
+        # but only when the core maps to exactly one party (never ambiguous).
+        core = company_core(name)
+        return core_idx.get(core) if core else None
 
     def upsert_party(self, client_id: str, entry: PartyEntry) -> None:
         with self._lock:

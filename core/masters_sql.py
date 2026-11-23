@@ -33,8 +33,8 @@ from sqlalchemy.engine import Engine
 from .audit import Artifact, now_iso
 
 from .config import DEFAULT_TAX_RATES, INVOICE_TYPE_CODE
-from .masters import ClientConfig, ItemEntry, PartyEntry
-from .parsing import normalize_key
+from .masters import ClientConfig, ItemEntry, PartyEntry, _build_core_index
+from .parsing import company_core, normalize_key
 
 _metadata = MetaData()
 
@@ -268,7 +268,7 @@ class SqlMasterStore:
         d["name_key"] = normalize_key(e.name)
         return d
 
-    def _parties_indexed(self, client_id: str) -> tuple[list[PartyEntry], dict]:
+    def _parties_indexed(self, client_id: str) -> tuple[list[PartyEntry], dict, dict]:
         cached = self._parties_cache.get(client_id)
         if cached is not None:
             return cached
@@ -278,8 +278,9 @@ class SqlMasterStore:
             ).mappings().all()
         parties = [self._party_from_row(r) for r in rows]
         name_idx = {normalize_key(e.name): e for e in parties}
-        self._parties_cache[client_id] = (parties, name_idx)
-        return parties, name_idx
+        core_idx = _build_core_index(parties)
+        self._parties_cache[client_id] = (parties, name_idx, core_idx)
+        return parties, name_idx, core_idx
 
     def list_parties(self, client_id: str) -> list[PartyEntry]:
         return list(self._parties_indexed(client_id)[0])
@@ -288,7 +289,12 @@ class SqlMasterStore:
         key = normalize_key(name)
         if not key:
             return None
-        return self._parties_indexed(client_id)[1].get(key)
+        _parties, name_idx, core_idx = self._parties_indexed(client_id)
+        hit = name_idx.get(key)
+        if hit is not None:
+            return hit
+        core = company_core(name)  # safe, unambiguous-only fallback
+        return core_idx.get(core) if core else None
 
     def upsert_party(self, client_id: str, entry: PartyEntry) -> None:
         key = normalize_key(entry.name)

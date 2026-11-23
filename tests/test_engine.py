@@ -214,3 +214,46 @@ def test_total_mismatch_flagged(store, geeta_client):
     )
     result = process([row], geeta_client, store)
     assert FlagCode.INVOICE_TOTAL_MISMATCH in _codes(result.invoices)
+
+
+def test_party_matches_same_company_written_differently(store, geeta_client):
+    # Register name "MDV INDS LTD" must resolve the TIN of the master's
+    # "MDV INDUSTRIES LIMITED" (same company, Ltd/INDS differences).
+    from core.masters import PartyEntry
+    store.upsert_party("geeta", PartyEntry(name="MDV INDUSTRIES LIMITED",
+                                           tin="01306923-0001", status="B2B"))
+    row = LineRow(source_row=1, invoice_number_raw="X", customer_name="MDV INDS LTD",
+                  item_name="Rice 50kg", quantity=Decimal("1"), unit_price=Decimal("100"),
+                  line_value=Decimal("100"), tax_rate=Decimal("0.075"))
+    result = process([row], geeta_client, store)
+    iv = result.invoices[0]
+    assert iv.invoice_kind == "B2B"
+    assert iv.party_tin == "01306923-0001"
+
+
+def test_party_never_matches_a_different_company(store, geeta_client):
+    # "ARAB POLYMERS" must NOT pick up "AR POLYMERS LTD"'s TIN (different firms).
+    from core.masters import PartyEntry
+    store.upsert_party("geeta", PartyEntry(name="AR POLYMERS LTD",
+                                           tin="31438603-0001", status="B2B"))
+    row = LineRow(source_row=1, invoice_number_raw="X", customer_name="ARAB POLYMERS",
+                  item_name="Rice 50kg", quantity=Decimal("1"), unit_price=Decimal("100"),
+                  line_value=Decimal("100"), tax_rate=Decimal("0.075"))
+    result = process([row], geeta_client, store)
+    assert result.invoices[0].invoice_kind == "B2C"
+    assert result.invoices[0].party_tin is None
+
+
+def test_ambiguous_company_core_is_not_matched(store, geeta_client):
+    # Two different parties share a core -> a register name on that core must
+    # NOT match either (never guess which TIN).
+    from core.masters import PartyEntry
+    store.seed_parties("geeta", [
+        PartyEntry(name="MDV LIMITED", tin="11111111-0001", status="B2B"),
+        PartyEntry(name="MDV NIGERIA LTD", tin="22222222-0001", status="B2B"),
+    ])
+    row = LineRow(source_row=1, invoice_number_raw="X", customer_name="MDV",
+                  item_name="Rice 50kg", quantity=Decimal("1"), unit_price=Decimal("100"),
+                  line_value=Decimal("100"), tax_rate=Decimal("0.075"))
+    result = process([row], geeta_client, store)
+    assert result.invoices[0].party_tin is None
