@@ -40,7 +40,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.11.23-ecvl-prefix"
+APP_VERSION = "v2026.11.23-party-tin"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -683,15 +683,15 @@ _ITEM_ALIASES = {
 }
 _PARTY_ALIASES = {
     "name": ["name", "customer_name", "customer name", "customer", "party"],
-    "tin": ["tax_identification_number", "tin", "tin no", "tin_no", "tinno"],
+    "tin": ["tax_identification_number", "tin", "tin no", "tin_no", "tinno", "tin number"],
     "status": ["status", "b2b/b2c", "type", "b2b_b2c"],
-    "email_address": ["email_address", "email"],
-    "phone_number": ["phone_number(optional)", "phone_number", "phone"],
+    "email_address": ["email_address", "email", "email address"],
+    "phone_number": ["phone_number(optional)", "phone_number", "phone", "phone no", "phone number"],
     "street_name": ["street_name", "street", "address"],
-    "city_name": ["city_name", "city"],
-    "postal_zone": ["postal_zone", "postal", "zip"],
+    "city_name": ["city_name", "city", "city name"],
+    "postal_zone": ["postal_zone", "postal", "zip", "postal code"],
     "country": ["country"],
-    "local_government": ["local_government", "lga"],
+    "local_government": ["local_government", "lga", "local govt", "local government"],
     "state": ["state"],
 }
 
