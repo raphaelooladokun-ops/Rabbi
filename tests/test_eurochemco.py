@@ -106,3 +106,23 @@ def test_ecvl_branch_prefix_mapping():
     assert _branch_prefix("Lagos-Mangoro") == "LM"
     assert _branch_prefix("Dir.Del.") == "DD"
     assert _branch_prefix("") == ""
+
+
+def test_ecvl_item_with_value_but_no_quantity_is_kept(store):
+    # A line with a value but a blank quantity must NOT be dropped; qty -> 1.
+    _store_with_ecvl(store)
+    H = ["Date", "Particulars", "", "", "E-Invoice Status", "IRN", "Vch Type", "Vch No.", "Debit", "Credit"]
+    grid = [
+        _pad(["ECVL"]), _pad(["Sales Register"]), _pad(H),
+        _pad(["", "", "", "", "", "", "Amount", "Amount"]),
+        _pad(["1-Oct-26", "Big Buyer", "", "", "", "", "Sales - Kano", "99001", "20000000"]),
+        _pad(["", "Toluene Sales"]),                       # group row
+        _pad(["", "Toluene 180kg", "", "", "20000000"]),   # value present, qty blank
+    ]
+    buf = io.BytesIO()
+    pd.DataFrame(grid).to_excel(buf, index=False, header=False)
+    buf.seek(0)
+    rows = get_reader("eurochemco").read(buf.getvalue()).rows
+    assert len(rows) == 1
+    assert rows[0].quantity == Decimal("1")
+    assert rows[0].gross_amount == Decimal("20000000")

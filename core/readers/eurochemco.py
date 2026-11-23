@@ -133,10 +133,12 @@ def parse_eurochemco(source: Source, *, sheet_name: Union[str, int, None] = None
                 ctx_total = None
             continue
 
-        # --- Item line (has quantity and value); group subtotal rows have neither ---
+        # --- Item line: marked by a VALUE in the value column (group/subtotal
+        # rows carry their amount in a different column). Quantity may be blank
+        # on a line — it then defaults to 1 so the sale is never dropped.
         qty_raw = cell(grid, r, cols["quantity"])
         val_raw = cell(grid, r, cols["value"])
-        if is_blank(qty_raw) or is_blank(val_raw):
+        if is_blank(val_raw):
             continue  # group/subtotal/blank row
         if ctx_vno is None:
             continue  # item before any invoice header — skip defensively
@@ -154,7 +156,8 @@ def parse_eurochemco(source: Source, *, sheet_name: Union[str, int, None] = None
             raw={"quantity": qty_raw, "value": val_raw},
         )
         try:
-            row.quantity = parse_decimal(qty_raw, field="quantity")
+            qty = parse_decimal(qty_raw, field="quantity")
+            row.quantity = qty if qty else Decimal("1")  # blank/zero qty -> 1
         except ParseError as exc:
             row.add_flag(FlagCode.BROKEN_SOURCE_VALUE, Severity.ERROR, str(exc), "quantity")
         try:
