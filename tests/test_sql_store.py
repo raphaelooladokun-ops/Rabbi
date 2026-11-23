@@ -53,6 +53,20 @@ def test_seed_lookup_and_persist_across_reconnect(tmp_path):
     assert s2.tax_rate_for("STANDARD_VAT") == Decimal("0.075")
 
 
+def test_long_lga_name_round_trips(tmp_path):
+    # Full LGA names ("Abuja Municipal Area Council (AMAC)") exceed the old
+    # 32-char column; the store must keep the whole value, not truncate/crash.
+    s = SqlMasterStore(_url(tmp_path))
+    lga = "Abuja Municipal Area Council (AMAC)"
+    s.upsert_party("geeta", PartyEntry(
+        name="Alpha Ceiling", tin="17901357-0001", status="B2B",
+        local_government=lga, state="Abuja",
+        street_name="Plot 105 Idu Industrial Layout", city_name="Abuja"))
+    got = s.lookup_party("geeta", "alpha ceiling")
+    assert got.local_government == lga
+    assert len(lga) > 32
+
+
 def test_seed_replaces_existing(tmp_path):
     s = SqlMasterStore(_url(tmp_path))
     s.seed_items("x", [ItemEntry(name="A", item_code="1")])
