@@ -27,7 +27,6 @@ from sqlalchemy import (
     delete,
     desc,
     select,
-    text,
 )
 from sqlalchemy.engine import Engine
 
@@ -74,10 +73,10 @@ parties_t = Table(
     Column("phone_number", String(64)),
     Column("street_name", String(512)),
     Column("city_name", String(255)),
-    Column("postal_zone", String(64)),
-    Column("country", String(16)),
-    Column("local_government", String(128)),  # full LGA names, e.g. "Abuja Municipal Area Council (AMAC)"
-    Column("state", String(64)),
+    Column("postal_zone", String(32)),
+    Column("country", String(8)),
+    Column("local_government", String(32)),  # Digitax LGA code (NG-XX-XXX), from the reference
+    Column("state", String(32)),             # Digitax state code (NG-XX), from the reference
 )
 
 tax_rates_t = Table(
@@ -124,43 +123,12 @@ class SqlMasterStore:
         self.engine: Engine = create_engine(
             _normalize_db_url(database_url), pool_pre_ping=True, future=True)
         _metadata.create_all(self.engine)
-        self._widen_columns()
         # In-memory per-client caches so the engine doesn't hit the database
         # once per invoice line (900+ round-trips) or re-fetch an 8k master on
         # every render. Invalidated on writes to that client.
         self._items_cache: dict[str, tuple] = {}
         self._parties_cache: dict[str, tuple] = {}
         self._tax_cache: Optional[dict] = None
-
-    def _widen_columns(self) -> None:
-        """Widen any VARCHAR column the live DB has narrower than the model.
-
-        ``create_all`` only creates missing tables — it never alters existing
-        ones — so a table created before a column was enlarged (e.g. the party
-        ``local_government`` grew from 32 to 128 for full LGA names) would still
-        reject the longer value. This brings the live schema up to the model.
-        Postgres-only, idempotent (alters only when the live column is smaller),
-        and best-effort so a lack of ALTER rights never blocks startup.
-        """
-        if self.engine.dialect.name != "postgresql":
-            return
-        try:
-            with self.engine.begin() as conn:
-                for table in (clients_t, items_t, parties_t, tax_rates_t, artifacts_t):
-                    for col in table.columns:
-                        want = getattr(col.type, "length", None)
-                        if not want:
-                            continue
-                        cur = conn.execute(text(
-                            "SELECT character_maximum_length FROM information_schema.columns "
-                            "WHERE table_name = :t AND column_name = :c"),
-                            {"t": table.name, "c": col.name}).scalar()
-                        if cur is not None and cur < want:
-                            conn.execute(text(
-                                f'ALTER TABLE {table.name} '
-                                f'ALTER COLUMN {col.name} TYPE VARCHAR({want})'))
-        except Exception:  # noqa: BLE001 — never block startup on a migration
-            pass
 
     # -- clients -----------------------------------------------------------
     def list_clients(self) -> list[ClientConfig]:

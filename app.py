@@ -40,7 +40,7 @@ from ui.auth import ALL_CLIENTS, allowed_clients, is_admin, login_gate, logout_b
 st.set_page_config(page_title="Rabbi e-Invoicing Converter", page_icon="🧾", layout="wide")
 
 # Bump on each deploy so the sidebar shows whether the latest code is live.
-APP_VERSION = "v2026.11.23-widen-cols"
+APP_VERSION = "v2026.11.23-lga-codes"
 
 # Run a block as an isolated fragment when available (Streamlit >= 1.33), so a
 # widget change inside it re-renders only that block — not the whole app/engine.
@@ -656,6 +656,23 @@ def _norm_col(c: str) -> str:
     return "".join(ch for ch in str(c).lower() if ch.isalnum())
 
 
+def _geo_codes(state_txt: str, lga_txt: str) -> tuple[str, str]:
+    """Map a party's free-text state / LGA to Digitax codes via the bundled
+    reference (or keep an already-NG-xx code). Unmatched text yields '' so the
+    operator sets it — we never store the raw free-text as if it were a code.
+    """
+    state = state_txt.strip()
+    if not state.upper().startswith("NG-"):
+        state = reference.state_code_from_text(state_txt)
+    lga = lga_txt.strip()
+    if lga.upper().startswith("NG-"):
+        return state, lga
+    code, backfill_state = reference.lga_from_text(lga_txt, state)
+    if backfill_state and not state:
+        state = backfill_state
+    return state, code
+
+
 def _pick(row, columns_norm, aliases) -> str:
     """Pull a value from a spreadsheet row by any of several column aliases.
 
@@ -850,6 +867,11 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
                     status = _pick(r, cols, _PARTY_ALIASES["status"]).upper()
                     if not status:
                         status = "B2B" if tin else "B2C"
+                    # LGA/state are Digitax codes derived from the reference —
+                    # never the sheet's free-text names.
+                    state_code, lga_code = _geo_codes(
+                        _pick(r, cols, _PARTY_ALIASES["state"]),
+                        _pick(r, cols, _PARTY_ALIASES["local_government"]))
                     entries.append(PartyEntry(
                         name=name, tin=tin, status=status,
                         email_address=_pick(r, cols, _PARTY_ALIASES["email_address"]),
@@ -858,8 +880,8 @@ def render_masters(store: MasterStore, client: ClientConfig) -> None:
                         city_name=_pick(r, cols, _PARTY_ALIASES["city_name"]),
                         postal_zone=_pick(r, cols, _PARTY_ALIASES["postal_zone"]),
                         country=_pick(r, cols, _PARTY_ALIASES["country"]) or "NGA",
-                        local_government=_pick(r, cols, _PARTY_ALIASES["local_government"]),
-                        state=_pick(r, cols, _PARTY_ALIASES["state"]),
+                        local_government=lga_code,
+                        state=state_code,
                     ))
                 store.seed_parties(client.id, entries)
                 st.success(f"Imported {len(entries)} parties.")
